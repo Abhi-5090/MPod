@@ -138,6 +138,42 @@ const authenticate = ({ allow = ["staff"], roles } = {}) =>
   });
 
 const requireStaff = (roles) => authenticate({ allow: ["staff"], roles });
+
+const REPORT_TOKEN_HOURS = 2;
+/**
+ * Report endpoints: the student, college staff, or (for the kiosk screen right after
+ * the interview) the holder of that interview's attempt token, for a short time.
+ * Expects :id and :interview_type route params.
+ */
+const reportAccess = () => {
+  const cookieAuth = authenticate({ allow: ["staff", "student"] });
+  return asyncHandler(async (req, res, next) => {
+    const token = req.get("X-Attempt-Token");
+    if (token && typeof token === "string" && token.length <= 200) {
+      // Lazy require to avoid a circular import.
+      const { modelFor } = require("../services/interviewModels");
+      const crypto = require("crypto");
+      let Model;
+      try {
+        Model = modelFor(req.params.interview_type);
+      } catch (_) {
+        Model = null;
+      }
+      const id = req.params.id;
+      if (Model && /^[a-f0-9]{24}$/i.test(String(id))) {
+        const doc = await Model.findById(id).select("+attempt.token_hash submitted_at").lean();
+        const expected = doc?.attempt?.token_hash;
+        const given = crypto.createHash("sha256").update(token).digest("hex");
+        const fresh = doc?.submitted_at && Date.now() - new Date(doc.submitted_at).getTime() < REPORT_TOKEN_HOURS * 3600 * 1000;
+        if (expected && fresh && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(given))) {
+          req.attemptAccessId = String(doc._id);
+          return next();
+        }
+      }
+    }
+    return cookieAuth(req, res, next);
+  });
+};
 const requireStudent = () => authenticate({ allow: ["student"] });
 const requireKiosk = () => authenticate({ allow: ["kiosk"] });
 
@@ -182,6 +218,7 @@ module.exports = {
   requireStaff,
   requireStudent,
   requireKiosk,
+  reportAccess,
   resolveTenantScope,
   scopeTenantParam,
   invalidateTenantCache,

@@ -1,20 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import '../scss/components/section.scss';
 import Header from '.././components/header/header.jsx';
-import * as echarts from 'echarts';
 import { Accordion } from 'react-bootstrap-accordion';
 import { CircularProgressbar, buildStyles } from 'react-circular-progressbar';
 import 'react-circular-progressbar/dist/styles.css';
 import generatePDF from "react-to-pdf";
 import { useSearchParams } from 'react-router-dom';
-import axios from "axios";
-import * as am5 from "@amcharts/amcharts5";
-import * as am5xy from "@amcharts/amcharts5/xy";
-import * as am5themes_Animated from "@amcharts/amcharts5/themes/Animated";
+import DOMPurify from "dompurify";
 // import * as am5xy3d from "@amcharts/amcharts5/xy3d";
 import logo from '../assets/images/logo/mayalogo.png'
 import { AiOutlineDownload } from "react-icons/ai";
-import axiosInstance from "../api/axiosInstance";
+import axiosInstance, { attemptTokenFor, forgetAttemptTokens } from "../api/axiosInstance";
 
 // const AmCharts5Chart = ({ values, chartId, axisColor }) => {
 //   const chartRef = useRef(null);
@@ -175,9 +171,7 @@ function Report(props) {
     const [accuracyAverage, setAccuracyAverage] = useState(0);
     const [totalDuration, setTotalDuration] = useState();
     const [loading, setLoading] = useState(true);
-    let intervieweeDetails;
     const frontendUrl = process.env.REACT_APP_PUBLIC_FRONTEND_URL;
-    intervieweeDetails = JSON.parse(localStorage.getItem('intervieweeDetails'));
     const [imageUrl, setImageUrl] = useState()
     const [emotions, setEmotions] = useState()
     const [imageLoaded, setImageLoaded] = useState(false);
@@ -259,10 +253,9 @@ function Report(props) {
 
     useEffect(() => {
         setLoading(true); // Start loading
-        axiosInstance.get("get-question-details/" + id + "/" + interview_type + "/" + roll_no)
+        axiosInstance.get("get-question-details/" + encodeURIComponent(id) + "/" + encodeURIComponent(interview_type) + "/" + encodeURIComponent(roll_no), { headers: attemptTokenFor(id) ? { "X-Attempt-Token": attemptTokenFor(id) } : {} })
             .then((response) => {
                 if (response.data) {
-                    console.log(response.data.user_details)
                     setInterviewDetails(response.data)
                     setQna(response.data.question_details);
                     // setEmotions(response.data?.emotions[0]);
@@ -271,7 +264,6 @@ function Report(props) {
                     setStrengths(response.data.overall_analysis.strengths);
                     setImprovements(response.data.overall_analysis.areas_of_improvement);
                     setInterviewParameters(response.data.overall_analysis.interview_parameters);
-                    console.log(response.data.overall_analysis.interview_parameters)
                     let lowCount = 0;
                     let mediumCount = 0;
                     let highCount = 0;
@@ -312,7 +304,6 @@ function Report(props) {
                     let highestValue = questionDetails.length * 3;
                     const confidenceAverage = (((lowCountValue + mediumCountValue + highCountValue + noneCountValue) / highestValue) * 100).toFixed(2);
                     setConfidenceAverage(confidenceAverage);
-                    console.log(confidenceAverage)
                     const sum = questionDetails.reduce((acc, ele) => acc + ele.accuracy, 0);
                     const average = questionDetails.length > 0 ? sum / questionDetails.length : 0;
                     setAccuracySum(sum);
@@ -337,12 +328,22 @@ function Report(props) {
     // if (!emotions || Object.keys(emotions).length === 0) {
     //     return <div>Emotion data not available. Please try again later.</div>;
     // }
-    const onSelectTab = () => {
-        alert('alsdfjk')
-    }
+    const onSelectTab = () => {};
+    const kioskSession = Boolean(attemptTokenFor(id));
+    const finishKiosk = () => {
+        forgetAttemptTokens();
+        window.location.href = "/home-2";
+    };
     return (
         <div className='wrapper-style' id='wrapper'>
             {<Header />}
+            {kioskSession && (
+                <div style={{ position: "fixed", top: 120, right: 20, zIndex: 1000 }}>
+                    <button onClick={finishKiosk} style={{ padding: "10px 18px", background: "#008738", color: "#fff", border: "none", borderRadius: 6 }}>
+                        Done - next student
+                    </button>
+                </div>
+            )}
             <div className="tf-section flat-blog-details" style={{ padding: "60px" }}>
 
                 <div className="container" >

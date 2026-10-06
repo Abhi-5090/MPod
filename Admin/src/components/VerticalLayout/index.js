@@ -11,7 +11,6 @@ import {
   changeTopbarTheme,
   changeLayoutWidth,
   changeColor,
-  showRightSidebarAction,
   changeMode
 } from "../../store/actions"
 
@@ -22,7 +21,6 @@ import { createSelector } from 'reselect';
 import Header from "./Header"
 import Sidebar from "./Sidebar"
 import Footer from "./Footer"
-import Rightbar from "../CommonForBoth/Rightbar"
 //Import Breadcrumb
 import Breadcrumb from "../../components/Common/Breadcrumb"
 
@@ -50,27 +48,6 @@ const Layout = (props) => {
     layoutColor,
     layoutMode
   } = useSelector(selectLayoutProperties);
-
-  useEffect(() => {
-    const hideRightbar = (event) => {
-      var rightbar = document.getElementById("right-bar");
-      //if clicked in inside right bar, then do nothing
-      if (rightbar && rightbar.contains(event.target)) {
-        return;
-      } else {
-        //if clicked in outside of rightbar then fire action for hide rightbar
-        dispatch(showRightSidebarAction(false));
-      }
-    };
-  
-    //init body click event fot toggle rightbar
-    document.body.addEventListener("click", hideRightbar, true);
-  
-    // Cleanup the event listener on component unmount
-    return () => {
-      document.body.removeEventListener("click", hideRightbar, true);
-    };
-  }, [dispatch]); 
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -132,18 +109,6 @@ const Layout = (props) => {
 
   return (
     <React.Fragment>
-      {/* <div id="preloader">
-        <div id="status">
-          <div className="spinner-chase">
-            <div className="chase-dot"></div>
-            <div className="chase-dot"></div>
-            <div className="chase-dot"></div>
-            <div className="chase-dot"></div>
-            <div className="chase-dot"></div>
-            <div className="chase-dot"></div>
-          </div>
-        </div>
-      </div> */}
 
       <div id="layout-wrapper">
         <Header toggleMenuCallback={toggleMenuCallback} />
@@ -157,14 +122,11 @@ const Layout = (props) => {
             <Container fluid>
               <Breadcrumb />
               {props.children}
-              {/* render Footer */}
-              <Footer />
             </Container>
           </div>
         </div>
         <Footer />
       </div>
-      {props.showRightSidebar ? <Rightbar /> : null}
     </React.Fragment>
   )
 }
@@ -177,7 +139,7 @@ Layout.propTypes = {
   changeSidebarTheme: PropTypes.func,
   changeSidebarType: PropTypes.func,
   changeTopbarTheme: PropTypes.func,
-  children: PropTypes.object,
+  children: PropTypes.node,
   isPreloader: PropTypes.any,
   layoutWidth: PropTypes.any,
   leftSideBarTheme: PropTypes.any,

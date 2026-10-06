@@ -6,120 +6,83 @@ import {
   CardBody,
   FormGroup,
   Button,
-  CardTitle,
-  InputGroup,
   Input,
   Label,
 } from "reactstrap";
-import { AvForm, AvField } from "availity-reactstrap-validation";
+import { AvForm } from "availity-reactstrap-validation";
 import Select from "react-select"
 import Flatpickr from "react-flatpickr"
 import { connect } from "react-redux";
 import { setBreadcrumbItems } from "../../store/actions";
 import axios from "axios";
 import { useNavigate } from "react-router-dom"
-import "react-datepicker/dist/react-datepicker.css"
-import axiosInstance from "../../api/axiosInstance";
-import { ToastContainer, toast } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
+import { toast } from "react-toastify";
 import * as XLSX from "xlsx";
+import { apiUrl, getErrorMessage } from "../../config/api";
+import { useAuth } from "../../context/AuthContext";
 
-const AddInterview = (props) => {
-  document.title = "Technial Hub| Add Interview";
+const levelOptions = [
+  { label: "Easy", value: "easy" },
+  { label: "Medium", value: "medium" },
+  { label: "Hard", value: "hard" },
+  { label: "Any", value: "any" },
+];
+const statusOptions = [
+  { label: "Active", value: "1" },
+  { label: "not Active", value: "0" },
+];
+const platformOptions = [
+  { label: "Web", value: "web" },
+  { label: "MPOD", value: "mpod" },
+];
+const interviewTypeOptions = [
+  { label: "Single", value: "single" },
+  { label: "Bulk", value: "bulk" },
+];
+// Coding interviews always have 2 questions.
+const CODING_QUESTIONS_COUNT = 2;
 
-  const breadcrumbItems = [
-    { title: "TechnicalHub", link: "#" },
-    { title: "Coding Interviews List", link: "/ai-interviews-list" },
-    { title: "Add Coding Interview", link: "/add-ai-interview" },
-  ];
-  const [data, setData] = useState({});
-  const [selectedGroup, setselectedGroup] = useState(null)
-  const [selectedTechnologyGroup, setselectedTechnologyGroup] = useState(null)
-  const [selectedModuleGroup, setselectedModuleGroup] = useState(null)
-  const [selectedTopicGroup, setselectedTopicGroup] = useState(null)
+const AddCodingInterview = (props) => {
+  document.title = "Add Coding Interview | Mpod";
+
+  const { user } = useAuth();
   const [selectedLevel, setSelectedLevel] = useState(null);
-  const [selectedType, setSelectedType] = useState(null);
-  const [courseData, setCourseData] = useState([])
-  const [technologyData, setTechnologyData] = useState([])
-  const [topicData, setTopicData] = useState([])
-  const [batchData, setBatchData] = useState([])
-  const [moduleData, setModuleData] = useState([])
   const [startDate, setStartDate] = useState(null);
   const [rollNo, setRollNo] = useState("");
-  const [selectedStatus, setSelectedStatus] = useState([])
-  const [selectedRound, setSelectedRound] = useState(null);
+  const [selectedStatus, setSelectedStatus] = useState(null)
   const [selectedInterviewType, setSelectedInterviewType] = useState(null);
-  const [user, setUser] = useState()
   const navigate = useNavigate();
-  const [selectedPlatform, setSelectedPlatform] = useState();
+  const [selectedPlatform, setSelectedPlatform] = useState(null);
   const [questionsCount, setQuestionsCount] = useState();
   const [file, setFile] = useState(null);
   const [failedResults, setFailedResults] = useState([]);
+  const [bulkTotal, setBulkTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false)
+
   useEffect(() => {
-    fetchCurrentUserData();
+    props.setBreadcrumbItems("Add Coding Interview", [
+      { title: "Mpod", link: "#" },
+      { title: "Coding Interviews List", link: "/coding-interviews-list" },
+      { title: "Add Coding Interview", link: "#" },
+    ]);
     fetchQuestionsData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchCurrentUserData = async () => {
-    try {
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-
-      const response = await axios.get(backendUrl + "get-admin-current-user");
-      if (response.data) {
-        setUser(response.data);
-      } else {
-        navigate("/login");
-      }
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      navigate("/login");
-    }
-  };
-
   const fetchQuestionsData = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
     try {
-      const response = await axios.get(backendUrl + 'coding-questions-count');
-      if (response.status === 200) {
-        setQuestionsCount(response.data);
-      }
+      const response = await axios.get(apiUrl('coding-questions-count'));
+      setQuestionsCount(response.data);
     } catch (error) {
-      console.log("Error fetching data:", error);
+      toast.error(getErrorMessage(error, "Failed to load available questions count."));
     }
   };
 
-
-  const levelOptions = [
-    { label: "Easy", value: "easy" },
-    { label: "Medium", value: "medium" },
-    { label: "Hard", value: "hard" },
-    { label: "Any", value: "any" },
-
-  ];
-  const statusOptions = [
-    { label: "Active", value: "1" },
-    { label: "not Active", value: "0" },
-  ];
-  const platformOptions = [
-    { label: "Web", value: "web" },
-    { label: "MPOD", value: "mpod" },
-
-  ];
-  const interviewTypeOptions = [
-    { label: "Single", value: "single" },
-    { label: "Bulk", value: "bulk" },
-  ];
-  const handleChange = (e) => {
-    setData({ ...data, no_of_questions: e.target.value });
-  };
   const handleRollNoChange = (e) => {
-    const { value } = e.target;
-    setRollNo(value);
+    setRollNo(e.target.value);
   };
 
   const handlePlatformSelect = (selectedplatform) => {
-    console.log(selectedplatform)
     setSelectedPlatform(selectedplatform);
   };
   const handleLevelSelect = (selectedLevel) => {
@@ -149,84 +112,53 @@ const AddInterview = (props) => {
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
   };
+
+  const validate = () => {
+    if (!selectedPlatform) return "Please select a platform.";
+    if (!selectedInterviewType) return "Please select interview type.";
+    if (!selectedLevel) return "Please select complexity level.";
+    if (!startDate) return "Please select start date and time.";
+    if (!selectedStatus) return "Please select interview status.";
+    if (selectedInterviewType.value === "single" && !rollNo.trim()) return "Please enter a Roll No";
+    if (selectedInterviewType.value === "bulk" && !file) return "Please upload a file";
+    return null;
+  };
+
   const AddInterview = async () => {
-    setIsLoading(true)
-    if (!selectedPlatform) {
-      toast.warn("Please select a platform.");
+    const validationError = validate();
+    if (validationError) {
+      toast.warn(validationError);
       return;
     }
-    if (!selectedInterviewType.value === "bulk" && !rollNo.trim()) {
-      toast.error("Please enter Roll No.");
-      return;
-    }
-    if (!selectedLevel) {
-      toast.error("Please select complexity level.");
-      return;
-    }
-    // if (!data.no_of_questions || data.no_of_questions <= 0) {
-    //   toast.error("Please enter a valid number of questions.");
-    //   return;
-    // }
-    if (!startDate) {
-      toast.error("Please select start date and time.");
-      return;
-    }
-    if (!selectedStatus) {
-      toast.error("Please select interview status.");
-      return;
-    }
-    if (selectedInterviewType.value === "single" && !rollNo) {
-      toast.warn("Please enter a Roll No");
-      return;
-    }
-
-    if (selectedInterviewType.value === "bulk" && !file) {
-      toast.warn("Please upload a file");
-      return;
-    }
-    if (selectedInterviewType.value === "single") {
-      const dataList = {
-        'platform': selectedPlatform.value,
-        'roll_no': rollNo.trim(),
-        'start_date_time': startDate,
-        'level': selectedLevel.value,
-        // "questions_count": data.no_of_questions,
-        "questions_count": 2,
-        "status": selectedStatus.value,
-        "created_by": user ? user.roll_no : "",
-        "tenant_id": user ? user.t_id : "null"
-      };
-
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-      try {
-        const response = await axios.post(backendUrl + 'add-coding-interview', dataList);
-        if (response.status === 200) {
-          setIsLoading(false)
-
-          toast.success("Interview added successfully!");
-          navigate(`/coding-interviews-list`);
-        }
-      } catch (error) {
-        if (error.response.status === 400) {
-          alert(error.response.data.message);
-        }
-        console.error('Error adding data:', error);
-      }
-    } else {
-      const dataList = {
-        'platform': selectedPlatform.value,
-        // 'roll_no': user ? user.roll_no : "null",
-        'file': selectedInterviewType.value === "bulk" ? file : null,
-        'start_date_time': startDate,
-        'level': selectedLevel.value,
-        "questions_count": 2,
-        "status": selectedStatus.value,
-        "created_by": user ? user.roll_no : "",
-        "tenant_id": user ? user.t_id : "null",
-        "type": selectedInterviewType.value
-      };
-      console.log(dataList)
-      try {
+    setIsLoading(true);
+    setFailedResults([]);
+    try {
+      if (selectedInterviewType.value === "single") {
+        const dataList = {
+          'platform': selectedPlatform.value,
+          'roll_no': rollNo.trim(),
+          'start_date_time': startDate,
+          'level': selectedLevel.value,
+          "questions_count": CODING_QUESTIONS_COUNT,
+          "status": selectedStatus.value,
+          "created_by": user.roll_no,
+          "tenant_id": user.t_id
+        };
+        await axios.post(apiUrl('add-coding-interview'), dataList);
+        toast.success("Interview added successfully!");
+        navigate(`/coding-interviews-list`);
+      } else {
+        const dataList = {
+          'platform': selectedPlatform.value,
+          'file': file,
+          'start_date_time': startDate,
+          'level': selectedLevel.value,
+          "questions_count": CODING_QUESTIONS_COUNT,
+          "status": selectedStatus.value,
+          "created_by": user.roll_no,
+          "tenant_id": user.t_id,
+          "type": selectedInterviewType.value
+        };
         const formData = new FormData();
         Object.entries(dataList).forEach(([key, value]) => {
           if (key === "file" && value) {
@@ -235,37 +167,28 @@ const AddInterview = (props) => {
             formData.append(key, value.toString());
           }
         });
-        const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
 
-        const response = await axios.post(backendUrl + "add-bulk-coding-interview", formData, {
+        const response = await axios.post(apiUrl("add-bulk-coding-interview"), formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
 
-        if (response.status === 201) {
-          setIsLoading(false)
-
+        const failed = response.status === 207 && Array.isArray(response.data?.results)
+          ? response.data.results.filter(r => r.status === "failed")
+          : [];
+        if (failed.length) {
+          setFailedResults(failed); // Show failed details on screen
+          setBulkTotal(response.data.total || response.data.results.length);
+          toast.error("Some interviews failed to be scheduled.");
+        } else {
           toast.success("Interview added successfully!");
           navigate("/coding-interviews-list");
-        } else if (response.status === 207) {
-          setIsLoading(false)
-
-          if (response.data.failed != 0) {
-            const failed = response.data.results.filter(r => r.status === "failed");
-            setFailedResults(failed); // Show failed details on screen
-            toast.error("Some interviews failed to be scheduled.");
-          } else {
-            toast.success("Interview added successfully!");
-            navigate("/coding-interviews-list");
-          }
         }
-      } catch (error) {
-        if (error.response?.status === 400) {
-          toast.error(error.response.data.message);
-        } else {
-          toast.error("Something went wrong");
-        }
-        console.error("Error adding data:", error);
       }
+    } catch (error) {
+      // e.g. 400 insufficient credits
+      toast.error(getErrorMessage(error, "Failed to add coding interview."));
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -276,8 +199,6 @@ const AddInterview = (props) => {
           <Card>
             <CardBody>
               <h4 className="card-title">Add Coding Interview</h4>
-              <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
-
               <AvForm className="needs-validation">
                 <Row>
                   <Col md="6">
@@ -351,23 +272,6 @@ const AddInterview = (props) => {
                     </div>
                   </Col>
 
-                  {/* <Col md="6">
-                    <div className="mb-3">
-                      <Label htmlFor="validationCustom01">No. of Questions</Label>
-                      <AvField
-                        name="no_of_questions"
-                        placeholder="No. of Questions"
-                        type="number"
-                        errorMessage="Enter no. of questions"
-                        className="form-control"
-                        validate={{ required: { value: true }, min: { value: 1, errorMessage: "At least 1 question is required" } }}
-                        id="validationCustom01"
-                        onChange={handleChange}
-                        value={data.no_of_questions}
-                      />
-
-                    </div>
-                  </Col> */}
                 </Row>
                 <Row>
                   <Col md="6">
@@ -421,7 +325,7 @@ const AddInterview = (props) => {
         </Col>
         <Col xl="6">
           <div>
-            <h3>Avaiable Questions</h3>
+            <h3>Available Questions</h3>
             {questionsCount && (
               <>
                 <h4>Easy: {questionsCount.easy}</h4>
@@ -436,7 +340,7 @@ const AddInterview = (props) => {
                 <div className="card border-danger shadow-sm">
                   <div className="card-header bg-danger text-white">
                     <h5 className="mb-0"> Failed Interview Creations</h5>
-                    <small>{failedResults.length} out of {failedResults?.total || 0} interviews failed</small>
+                    <small>{failedResults.length} out of {bulkTotal} interviews failed</small>
                   </div>
                   <ul className="list-group list-group-flush">
                     {failedResults.map((item, index) => (
@@ -445,7 +349,7 @@ const AddInterview = (props) => {
                           <span className="badge bg-danger rounded-pill">{item.roll_no}</span>
                         </div>
                         <div>
-                          <strong>Reason:</strong> {item.message}
+                          <strong>Reason:</strong> {item.message || item.reason}
                         </div>
                       </li>
                     ))}
@@ -460,4 +364,4 @@ const AddInterview = (props) => {
   );
 };
 
-export default connect(null, { setBreadcrumbItems })(AddInterview);
+export default connect(null, { setBreadcrumbItems })(AddCodingInterview);

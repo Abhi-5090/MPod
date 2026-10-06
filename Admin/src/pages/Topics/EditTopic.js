@@ -1,199 +1,160 @@
-import React, { useEffect, useState } from "react";
-import {
-  Row,
-  Col,
-  Card,
-  CardBody,
-  FormGroup,
-  Button,
-  CardTitle,
-  Label,
-} from "reactstrap";
-import { AvForm, AvField } from "availity-reactstrap-validation";
-import { connect } from "react-redux";
-import { setBreadcrumbItems } from "../../store/actions";
-import axios from "axios";
+import React, { useEffect, useState } from "react"
+import { Row, Col, Card, CardBody, Button, Label, Spinner } from "reactstrap"
+import { AvForm, AvField } from "availity-reactstrap-validation"
+import { connect } from "react-redux"
+import axios from "axios"
 import Switch from "react-switch"
-import { useParams, useNavigate } from "react-router-dom";
-import Select from "react-select";
+import { useParams, useNavigate } from "react-router-dom"
+import Select from "react-select"
+import { toast } from "react-toastify"
+import { setBreadcrumbItems } from "../../store/actions"
+import { apiUrl, getErrorMessage } from "../../config/api"
+import LoadState from "../../components/Common/LoadState"
 
-const EditTopic = (props) => {
-  document.title = "Technical Hub | Edit topic";
+const switchLabelStyle = {
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  height: "100%",
+  fontSize: 12,
+  color: "#fff",
+  paddingRight: 2,
+}
+const Offsymbol = () => <div style={switchLabelStyle}>No</div>
+const OnSymbol = () => <div style={switchLabelStyle}>Yes</div>
 
-  const breadcrumbItems = [
-    { title: "TechnicalHub", link: "#" },
-    { title: "Topics", link: "#" },
-    { title: "Edit Topic", link: "#" },
-  ];
-  const backendImageUrl = process.env.REACT_APP_BACKEND_IMAGE_URL
+const EditTopic = props => {
+  document.title = "Edit Topic | Mpod"
 
-  const [data, setData] = useState({});
-  const [switch3, setswitch3] = useState(true);
-  const [selectedTechnologyGroup, setselectedTechnologyGroup] = useState(null)
+  const { topicId } = useParams()
+  const navigate = useNavigate()
+
+  const [data, setData] = useState({})
+  const [active, setActive] = useState(true)
   const [technologyData, setTechnologyData] = useState([])
-  const [selectedGroup, setselectedGroup] = useState(null);
-  const navigate = useNavigate();
-  const [moduleData, setModuleData] = useState([]);
+  const [moduleData, setModuleData] = useState([])
+  const [selectedTechnology, setSelectedTechnology] = useState(null)
+  const [selectedModule, setSelectedModule] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
 
-  let topic = useParams();
   useEffect(() => {
-    props.setBreadcrumbItems('Edit Topic', breadcrumbItems);
-    fetchTechnologyData()
-    fetchTopicData();
-  },[])
-  // useEffect(() => {
-  //   let authUser = JSON.parse(localStorage.getItem('authUser'));
-  //   if (authUser.role == 'admin' || authUser.role == 'superadmin') {
-  //   }
-  //   else {
-  //     alert("your not autherized")
-  //     localStorage.clear();
-  //     window.location.href = '/admin/login';
-  //   }
-  // }, []);
-  
-  useEffect(()=>{
-    if(selectedTechnologyGroup){
-      fetchData();
-    }
-  }, [selectedTechnologyGroup]);
-
-
-  const fetchTechnologyData = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-    try {
-      const response = await axios.get(backendUrl + 'get-technologies');
-      if (response.status === 200) {
-        setTechnologyData(response.data);
-      }
-    } catch (error) {
-      console.log("Error fetching data:", error);
-    }
-  };
-
-  const technologyOptionGroup = technologyData.map((ele) => ({
-    options: [
-      { label: ele.technology_name, value: ele._id }
+    const breadcrumbItems = [
+      { title: "Mpod", link: "#" },
+      { title: "Topics", link: "/topics-list" },
+      { title: "Edit Topic", link: "#" },
     ]
-  }));
+    props.setBreadcrumbItems("Edit Topic", breadcrumbItems)
 
-
-
-  const fetchData = async () => {
-    if (typeof (selectedTechnologyGroup) != 'undefined') {
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-      try {
-        const response = await axios.post(backendUrl + 'get-modules-by-technology', { technology_id: selectedTechnologyGroup.value });
-        if (response.status === 200) {
-          console.log(response.data)
-          setModuleData(response.data);
+    axios
+      .get(apiUrl("get-technologies"))
+      .then(response => setTechnologyData(Array.isArray(response.data) ? response.data : []))
+      .catch(err => {
+        if (err.response?.status !== 404) {
+          toast.error(getErrorMessage(err, "Failed to load technologies."))
         }
-      } catch (error) {
-        console.log("Error fetching data:", error);
-      }
-    };
-  };
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const fetchTopicData = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
+    setLoading(true)
+    setError(null)
     try {
-      const response = await axios.get(backendUrl + "get-topic-by-id/" + topic.topicId);
-      if (response.status === 200) {
-        console.log(response.data)
-        setData(response.data);
-        setswitch3(response.data.status === 1);
-      }
-    } catch (error) {
-      console.log("Error fetching topic data:", error);
+      const response = await axios.get(apiUrl(`get-topic-by-id/${topicId}`))
+      const topic = response.data || {}
+      setData(topic)
+      setActive(topic.status === 1)
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to load topic."))
+    } finally {
+      setLoading(false)
     }
-  };
-
-  const handleSelectGroup = (selectedGroup) => {
-    setselectedGroup(selectedGroup);
-  };
-
-  function handleSelectTechnologyGroup(selectedGroup) {
-    setselectedTechnologyGroup(selectedGroup)
-    console.log(selectedTechnologyGroup)
   }
 
-  const handleChange = (e) => {
-    setData({ ...data, topic_name: e.target.value });
-  };
+  useEffect(() => {
+    fetchTopicData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topicId])
 
-  const updateTopic = async () => {
-    const newStatus = switch3 ? 1 : 0;
-     let data_list = {
-      topic_name:data.topic_name,
-      module:selectedGroup.value,
-      technology:selectedTechnologyGroup.value,
-      status:newStatus
+  // Load modules for the selected technology.
+  useEffect(() => {
+    setModuleData([])
+    if (!selectedTechnology) return
+    let cancelled = false
+    axios
+      .post(apiUrl("get-modules-by-technology"), { technology_id: selectedTechnology.value })
+      .then(response => {
+        if (!cancelled) setModuleData(Array.isArray(response.data) ? response.data : [])
+      })
+      .catch(err => {
+        if (!cancelled && err.response?.status !== 404) {
+          toast.error(getErrorMessage(err, "Failed to load modules."))
+        }
+      })
+    return () => {
+      cancelled = true
     }
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-    try {
-      const response = await axios.post(backendUrl + 'update-topic/' + topic.topicId, data_list);
-      if (response.status === 200) {
-        navigate(`/topics-list`);
-        alert("Success");
-      }
-    } catch (error) {
-      console.error('Error updating topic:', error);
-    }
-  };
+  }, [selectedTechnology])
 
+  // Preselect the topic's technology.
   useEffect(() => {
     if (technologyData.length > 0 && data.technology) {
-      const initialSelectedGroup = technologyData.find((ele) => ele._id === data.technology);
-      setselectedTechnologyGroup({ label: initialSelectedGroup.technology_name, value: initialSelectedGroup._id });
-    }
-  }, [technologyData, data.technology]);
-
-  useEffect(() => {
-    if (moduleData.length > 0 && data.module) {
-      const initialSelectedGroup = moduleData.find((ele) => ele._id === data.module);
-      if(initialSelectedGroup) {
-
-        setselectedGroup({ label: initialSelectedGroup.module_name, value: initialSelectedGroup._id });
+      const technology = technologyData.find(ele => ele._id === data.technology)
+      if (technology) {
+        setSelectedTechnology({ label: technology.technology_name, value: technology._id })
       }
     }
-    // setselectedGroup({})
-  }, [moduleData, data.module]);
+  }, [technologyData, data.technology])
 
-  const Offsymbol = (props) => {
-    return (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100%",
-          fontSize: 12,
-          color: "#fff",
-          paddingRight: 2
-        }}
-      >
-        No
-      </div>
-    );
-  };
+  // Preselect the topic's module once the modules of its technology are loaded.
+  useEffect(() => {
+    if (moduleData.length > 0 && data.module) {
+      const module = moduleData.find(ele => ele._id === data.module)
+      if (module) {
+        setSelectedModule({ label: module.module_name, value: module._id })
+      }
+    }
+  }, [moduleData, data.module])
 
-  const OnSymbol = () => {
-    return (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100%",
-          fontSize: 12,
-          color: "#fff",
-          paddingRight: 2
-        }}
-      >
-        Yes
-      </div>
-    );
-  };
+  const handleTechnologyChange = option => {
+    setSelectedTechnology(option)
+    setSelectedModule(null)
+  }
+
+  const updateTopic = async () => {
+    if (!selectedTechnology) {
+      toast.error("Please select a technology")
+      return
+    }
+    if (!selectedModule) {
+      toast.error("Please select a module")
+      return
+    }
+    if (!data.topic_name || !data.topic_name.trim()) {
+      toast.error("Topic name is required")
+      return
+    }
+
+    const payload = {
+      topic_name: data.topic_name.trim(),
+      module: selectedModule.value,
+      technology: selectedTechnology.value,
+      status: active ? 1 : 0,
+    }
+
+    setSaving(true)
+    try {
+      await axios.post(apiUrl(`update-topic/${topicId}`), payload)
+      toast.success("Topic updated successfully")
+      navigate("/topics-list")
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to update topic."))
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <React.Fragment>
@@ -202,81 +163,79 @@ const EditTopic = (props) => {
           <Card>
             <CardBody>
               <h4 className="card-title">EDIT TOPIC</h4>
-              <AvForm className="needs-validation">
-              <Row>
-                  <Col md="6">
-                    <div className="mb-3">
-                      <Label>Select technology</Label>
-                      <Select
-                        value={selectedTechnologyGroup}
-                        onChange={handleSelectTechnologyGroup}
-                        options={technologyOptionGroup}
-                        classNamePrefix="select2-selection"
-                      />
-                    </div>
-                  </Col>
-                </Row>
-                <Row>
-                  <Col md="6">
-                    <div className="mb-3">
-                      <Label>Select module</Label>
-                      <Select
-                        value={selectedGroup}
-                        onChange={handleSelectGroup}
-                        options={moduleData.map((ele) => ({ label: ele.module_name, value: ele._id }))}
-                        classNamePrefix="select2-selection"
-                      />
-                    </div>
-                  </Col>
-                </Row>
-                <Row>
-                  <Col md="6">
-                    <div className="mb-3">
-                      <Label htmlFor="validationCustom01">Topic Name</Label>
-                      <AvField
-                        name="topic_name"
-                        placeholder="Topic name"
-                        type="text"
-                        errorMessage="Enter Topic Name"
-                        className="form-control"
-                        validate={{ required: { value: true } }}
-                        id="validationCustom01"
-                        onChange={handleChange}
-                        value={data.topic_name}
-                      />
-                    </div>
-                  </Col>
-                </Row>
-              
-                <Row>
-                  <Col md="6">
-                    <div className="mb-3">
-                      <Label htmlFor="validationCustom01">Status</Label>&nbsp;&nbsp;&nbsp;&nbsp;
-                      <Switch
-                        uncheckedIcon={<Offsymbol />}
-                        checkedIcon={<OnSymbol />}
-                        onColor="#02a499"
-                        onChange={() => {
-                          setswitch3(!switch3)
-                        }}
-                        checked={switch3}
-                      />
-                      &nbsp;
-                    </div>
-                  </Col>
-                </Row>
-                <Button color="primary" type="button" onClick={updateTopic}>
-                  Submit
-                </Button>
-              </AvForm>
+              <LoadState loading={loading} error={error} onRetry={fetchTopicData}>
+                <AvForm className="needs-validation" onValidSubmit={updateTopic}>
+                  <Row>
+                    <Col md="6">
+                      <div className="mb-3">
+                        <Label>Select technology</Label>
+                        <Select
+                          value={selectedTechnology}
+                          onChange={handleTechnologyChange}
+                          options={technologyData.map(ele => ({ label: ele.technology_name, value: ele._id }))}
+                          classNamePrefix="select2-selection"
+                        />
+                      </div>
+                    </Col>
+                  </Row>
+                  <Row>
+                    <Col md="6">
+                      <div className="mb-3">
+                        <Label>Select module</Label>
+                        <Select
+                          value={selectedModule}
+                          onChange={setSelectedModule}
+                          options={moduleData.map(ele => ({ label: ele.module_name, value: ele._id }))}
+                          classNamePrefix="select2-selection"
+                        />
+                      </div>
+                    </Col>
+                  </Row>
+                  <Row>
+                    <Col md="6">
+                      <div className="mb-3">
+                        <Label htmlFor="validationCustom01">Topic Name</Label>
+                        <AvField
+                          name="topic_name"
+                          placeholder="Topic name"
+                          type="text"
+                          errorMessage="Enter Topic Name"
+                          className="form-control"
+                          validate={{ required: { value: true } }}
+                          id="validationCustom01"
+                          onChange={e => setData({ ...data, topic_name: e.target.value })}
+                          value={data.topic_name || ""}
+                        />
+                      </div>
+                    </Col>
+                  </Row>
+
+                  <Row>
+                    <Col md="6">
+                      <div className="mb-3">
+                        <Label>Status</Label>&nbsp;&nbsp;&nbsp;&nbsp;
+                        <Switch
+                          uncheckedIcon={<Offsymbol />}
+                          checkedIcon={<OnSymbol />}
+                          onColor="#02a499"
+                          onChange={() => setActive(!active)}
+                          checked={active}
+                        />
+                      </div>
+                    </Col>
+                  </Row>
+                  <Button color="primary" type="submit" disabled={saving}>
+                    {saving && <Spinner size="sm" className="me-1" />}
+                    Submit
+                  </Button>
+                </AvForm>
+              </LoadState>
             </CardBody>
           </Card>
         </Col>
       </Row>
     </React.Fragment>
-  );
-};
+  )
+}
 
-export default connect(null, { setBreadcrumbItems })(EditTopic);
-
-
+export default connect(null, { setBreadcrumbItems })(EditTopic)

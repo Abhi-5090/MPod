@@ -190,6 +190,16 @@ describe("kiosk", () => {
     expect(start.status).toBe(200);
     expect(start.body.questions.length).toBe(3);
 
+    // the kiosk screen may show this report with the attempt token, but not other reports
+    const reportUrl = `/backend/api/get-question-details/${iv._id}/ai%20generated/${s.studentA.roll_no}`;
+    expect((await kiosk.get(reportUrl).set("X-Attempt-Token", start.body.attempt_token)).status).toBe(401); // not submitted yet
+    await request(app).post("/backend/api/interview-session/submit").set("X-Attempt-Token", start.body.attempt_token)
+      .send({ interview_id: String(iv._id), interview_type: "ai generated" });
+    await waitFor(async () => (await Interview.findById(iv._id)).status === 0);
+    expect((await kiosk.get(reportUrl).set("X-Attempt-Token", start.body.attempt_token)).status).toBe(200);
+    expect((await kiosk.get(reportUrl)).status).toBe(401);
+    expect((await kiosk.get(reportUrl).set("X-Attempt-Token", "nope")).status).toBe(401);
+
     // revoke from the admin portal: the kiosk stops working immediately
     const admin = await loginAs(s.adminA, { admin: true });
     const list = await admin.get("/backend/api/kiosk/devices");

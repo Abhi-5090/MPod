@@ -1,30 +1,33 @@
 import React from 'react';
+import PropTypes from 'prop-types';
+import DOMPurify from 'dompurify';
 import { Modal, ModalHeader, ModalBody } from 'reactstrap';
+
+// Decode the few entities the editor stores, then sanitize before injecting.
+const renderHTML = (html) => {
+  if (html === null || html === undefined) return { __html: '' };
+  const decoded = String(html)
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+  return { __html: DOMPurify.sanitize(decoded) };
+};
+
+// Strip HTML tags and decode entities for clean text blocks (rendered as text, not HTML).
+const formatPlainText = (html) => {
+  if (html === null || html === undefined) return '';
+  return String(html)
+    .replace(/<\/(p|li|br)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .trim();
+};
 
 const ViewCodingQuestionModal = ({ isOpen, toggle, question }) => {
   if (!question) return null;
-
-  // Convert HTML-encoded strings to readable text
-  const renderHTML = (html) => {
-    return {
-      __html: html
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-    };
-  };
-
-  // Strip HTML tags and decode entities for clean text blocks
-  const formatPlainText = (html) => {
-    return html
-      ?.replace(/<\/(p|li|br)>/gi, '\n')
-      ?.replace(/<br\s*\/?>/gi, '\n')
-      ?.replace(/<[^>]+>/g, '')
-      ?.replace(/&nbsp;/g, ' ')
-      ?.replace(/&lt;/g, '<')
-      ?.replace(/&gt;/g, '>')
-      ?.trim();
-  };
 
   return (
     <Modal isOpen={isOpen} toggle={toggle} size="lg">
@@ -44,6 +47,12 @@ const ViewCodingQuestionModal = ({ isOpen, toggle, question }) => {
       </ModalBody>
     </Modal>
   );
+};
+
+ViewCodingQuestionModal.propTypes = {
+  isOpen: PropTypes.bool,
+  toggle: PropTypes.func,
+  question: PropTypes.object,
 };
 
 export default ViewCodingQuestionModal;

@@ -6,7 +6,6 @@ import {
   CardBody,
   FormGroup,
   Button,
-  CardTitle,
   InputGroup,
   Input,
   Label,
@@ -18,113 +17,96 @@ import { connect } from "react-redux";
 import { setBreadcrumbItems } from "../../store/actions";
 import axios from "axios";
 import { useNavigate } from "react-router-dom"
-import "react-datepicker/dist/react-datepicker.css"
-import axiosInstance from "../../api/axiosInstance";
-import { ToastContainer, toast } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
+import { toast } from "react-toastify";
 import * as XLSX from "xlsx";
+import { apiUrl, getErrorMessage } from "../../config/api";
+import { useAuth } from "../../context/AuthContext";
 
+const statusOptions = [
+  { label: "Active", value: "1" },
+  { label: "not Active", value: "0" },
+];
 
-const AddInterview = (props) => {
-  document.title = "Technial Hub| Add Interview";
+const roundOptions = [
+  { label: "TR1", value: "TR1" },
+  { label: "TR2", value: "TR2" },
+  { label: "TR3", value: "TR3" },
+  { label: "TR4", value: "TR4" },
+  { label: "MR1", value: "MR1" },
+  { label: "HR1", value: "HR1" },
+];
+const typeOptions = [
+  { label: "Service Based", value: "service_based" },
+  { label: "Product Based", value: "product_based" }
+];
+const platformOptions = [
+  { label: "Web", value: "web" },
+  { label: "MPOD", value: "mpod" },
+];
+const interviewTypeOptions = [
+  { label: "Single", value: "single" },
+  { label: "Bulk", value: "bulk" },
+];
 
-  const breadcrumbItems = [
-    { title: "TechnicalHub", link: "#" },
-    { title: "Interviews List", link: "/ai-interviews-list" },
-    { title: "Add Interview", link: "/add-ai-interview" },
-  ];
+const AddCompanyInterview = (props) => {
+  document.title = "Add Company Interview | Mpod";
+
+  const { user } = useAuth();
   const [data, setData] = useState({});
-  const [selectedTechnologyGroup, setselectedTechnologyGroup] = useState(null)
-  const [selectedModuleGroup, setselectedModuleGroup] = useState(null)
   const [selectedType, setSelectedType] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [selectedCompany, setSelectedCompany] = useState(null);
-
   const [startDate, setStartDate] = useState(null);
   const [rollNo, setRollNo] = useState("");
-  const [selectedStatus, setSelectedStatus] = useState([])
+  const [selectedStatus, setSelectedStatus] = useState(null)
   const [selectedRound, setSelectedRound] = useState(null);
   const [selectedInterviewType, setSelectedInterviewType] = useState(null);
-  const [user, setUser] = useState()
-  const [selectedPlatform, setSelectedPlatform] = useState();
+  const [selectedPlatform, setSelectedPlatform] = useState(null);
   const [availableQuestions, setAvailableQuestions] = useState();
   const [tags, setTags] = useState([]);
   const [selectedTag, setSelectedTag] = useState(null);
   const [file, setFile] = useState(null);
-
-
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+
   useEffect(() => {
-    props.setBreadcrumbItems('Add Company Interview', breadcrumbItems);
+    props.setBreadcrumbItems('Add Company Interview', [
+      { title: "Mpod", link: "#" },
+      { title: "Company Interviews List", link: "/company-interviews-list" },
+      { title: "Add Company Interview", link: "#" },
+    ]);
     fetchCompanies();
-
-
+    fetchTags();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useEffect(() => {
-    fetchCurrentUserData();
-    fetchTags()
-  }, []);
+
   const fetchTags = async () => {
     try {
-      const response = await axios.get(process.env.REACT_APP_MPOD_BACKEND_URL + 'tags-list');
-      if (response.status === 200) {
-        setTags(response.data.tags);
-      }
+      const response = await axios.get(apiUrl('tags-list'));
+      setTags(Array.isArray(response.data?.tags) ? response.data.tags : []);
     } catch (error) {
-      console.error("Error fetching tags:", error);
+      toast.error(getErrorMessage(error, "Failed to load tags."));
     }
   };
-  const fetchCurrentUserData = async () => {
-    try {
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
 
-      const response = await axios.get(backendUrl + "get-admin-current-user");
-      if (response.data) {
-        setUser(response.data);
-      } else {
-        navigate("/login");
-      }
+  const fetchCompanies = async () => {
+    try {
+      const response = await axios.get(apiUrl('companies-list'));
+      setCompanies(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
-      console.error("Error fetching user:", error);
-      navigate("/login");
+      toast.error(getErrorMessage(error, "Failed to load companies."));
     }
   };
+
   const companyOptions = companies.map(company => ({
     label: company.company_name,
     value: company._id
   }));
-  const statusOptions = [
-    { label: "Active", value: "1" },
-    { label: "not Active", value: "0" },
-  ];
-
-  const roundOptions = [
-    { label: "TR1", value: "TR1" },
-    { label: "TR2", value: "TR2" },
-    { label: "TR3", value: "TR3" },
-    { label: "TR4", value: "TR4" },
-    { label: "MR1", value: "MR1" },
-    { label: "HR1", value: "HR1" },
-
-  ];
-  const typeOptions = [
-    { label: "Service Based", value: "service_based" },
-    { label: "Product Based", value: "product_based" }
-  ];
-  const platformOptions = [
-    { label: "Web", value: "web" },
-    { label: "MPOD", value: "mpod" },
-
-  ];
   const tagOptions = tags.map(tag => ({
     label: tag.tag_name,
     value: tag._id
   }));
 
-  const interviewTypeOptions = [
-    { label: "Single", value: "single" },
-    { label: "Bulk", value: "bulk" },
-  ];
   const handleInterviewTypeSelect = (selectedInterviewType) => {
     setSelectedInterviewType(selectedInterviewType);
     // Reset rollNo and file when switching types
@@ -136,69 +118,51 @@ const AddInterview = (props) => {
     setData({ ...data, no_of_questions: e.target.value });
   };
   const handleRollNoChange = (e) => {
-    const { value } = e.target;
-    setRollNo(value);
+    setRollNo(e.target.value);
   };
   const handlePlatformSelect = (selectedplatform) => {
-    console.log(selectedplatform)
     setSelectedPlatform(selectedplatform);
   };
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
   };
-  const fetchCompanies = async () => {
-    try {
-      const response = await axios.get(process.env.REACT_APP_MPOD_BACKEND_URL + 'companies-list');
-      if (response.status === 200) {
-        setCompanies(response.data);
-      }
-    } catch (error) {
-      console.error("Error fetching companies:", error);
-    }
-  };
+
   const fetchAvailableQuestionsData = async () => {
     try {
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-
-      const data = {
+      const payload = {
         company: selectedCompany.map((c) => c.value),
         type: selectedType.map((t) => t.value),
         round: selectedRound.map((r) => r.value),
         tag: selectedTag?.value
       };
-
-      const response = await axios.post(
-        backendUrl + "available-company-questions",
-        data
-      );
-      if (response.data) {
-        setAvailableQuestions(response.data.count);
-      }
+      const response = await axios.post(apiUrl("available-company-questions"), payload);
+      setAvailableQuestions(response.data?.count);
     } catch (error) {
-      console.error("Error fetching available questions:", error);
+      toast.error(getErrorMessage(error, "Failed to load available questions count."));
     }
   };
 
   useEffect(() => {
-
     if (
       selectedCompany && selectedCompany.length > 0 &&
       selectedType && selectedType.length > 0 &&
       selectedRound && selectedRound.length > 0
     ) {
       fetchAvailableQuestionsData();
+    } else {
+      setAvailableQuestions(undefined);
     }
-  }, [selectedCompany, selectedType, selectedRound]);
-
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCompany, selectedType, selectedRound, selectedTag]);
 
   const handlestatusSelect = (selectedLevel) => {
     setSelectedStatus(selectedLevel);
   };
+
   const AddInterview = async () => {
     if (
       !selectedPlatform ||
-      !rollNo.trim() && selectedInterviewType?.value === "single" ||
-      !file && selectedInterviewType?.value === "bulk" ||
+      !selectedInterviewType ||
       !selectedCompany?.length ||
       !selectedType?.length ||
       !selectedRound?.length ||
@@ -210,7 +174,7 @@ const AddInterview = (props) => {
       return;
     }
 
-    if (selectedInterviewType.value === "single" && !rollNo) {
+    if (selectedInterviewType.value === "single" && !rollNo.trim()) {
       toast.warn("Please enter a Roll No");
       return;
     }
@@ -219,7 +183,6 @@ const AddInterview = (props) => {
       toast.warn("Please upload a file");
       return;
     }
-
 
     const dataList = {
       platform: selectedPlatform.value,
@@ -231,64 +194,49 @@ const AddInterview = (props) => {
       start_date_time: startDate,
       questions_count: data.no_of_questions,
       status: selectedStatus.value,
-      created_by: user ? user.roll_no : "",
-      tenant_id: user ? user.t_id : "null",
+      created_by: user.roll_no,
+      tenant_id: user.t_id,
     };
 
-    if (selectedInterviewType.value === "single") {
-      try {
-        console.log(dataList);
-        const response = await axios.post(process.env.REACT_APP_MPOD_BACKEND_URL + 'add-company-interview', dataList);
-        if (response.status === 200) {
-          toast.success("Interview added successfully!");
-          setTimeout(() => {
-            navigate(`/company-interviews-list`);
-          }, 1000);
-        }
-      } catch (error) {
-        if (error.response?.status === 400) {
-          toast.error(`❌ ${error.response.data.message}`);
-        } else {
-          toast.error("Something went wrong. Please try again.");
-        }
-        console.error("Error adding interview:", error);
-      }
-    }
-    else if (selectedInterviewType.value === "bulk") {
-      try {
+    setIsLoading(true);
+    try {
+      if (selectedInterviewType.value === "single") {
+        await axios.post(apiUrl('add-company-interview'), dataList);
+        toast.success("Interview added successfully!");
+      } else {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('platform', dataList.platform);
         formData.append('company', JSON.stringify(dataList.company));
         formData.append('type', JSON.stringify(dataList.type));
         formData.append('round', JSON.stringify(dataList.round));
-        formData.append('tag', dataList.tag);
+        if (dataList.tag) formData.append('tag', dataList.tag);
         formData.append('start_date_time', dataList.start_date_time);
         formData.append('questions_count', dataList.questions_count);
         formData.append('status', dataList.status);
         formData.append('created_by', dataList.created_by);
         formData.append('tenant_id', dataList.tenant_id);
-        const response = await axios.post(process.env.REACT_APP_MPOD_BACKEND_URL + 'bulk-add-company-interviews', formData, {
+        const response = await axios.post(apiUrl('bulk-add-company-interviews'), formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
         });
-        console.log(response);
-        if (response.status === 207) {
-          toast.success("Bulk interviews added successfully!");
-          setTimeout(() => {
-            navigate(`/company-interviews-list`);
-          }, 1000);
-        }
-      }
-      catch (error) {
-        if (error.response?.status === 400) {
-          toast.error(`❌ ${error.response.data.message}`);
+        const result = response.data || {};
+        if (typeof result.total === "number" && typeof result.success === "number") {
+          toast.success(`Bulk interviews: ${result.success} of ${result.total} scheduled`);
         } else {
-          toast.error("Something went wrong. Please try again.");
+          toast.success("Bulk interviews added successfully!");
         }
-        console.error("Error adding bulk interviews:", error);
+        if (result.failed > 0) {
+          toast.warn(`${result.failed} interview(s) could not be scheduled`);
+        }
       }
+      navigate(`/company-interviews-list`);
+    } catch (error) {
+      // e.g. 400 insufficient credits
+      toast.error(getErrorMessage(error, "Something went wrong. Please try again."));
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -310,8 +258,6 @@ const AddInterview = (props) => {
           <Card>
             <CardBody>
               <h4 className="card-title">Add Company Interview</h4>
-              <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
-
               <AvForm className="needs-validation">
                 <Row>
                   <Col md="6">
@@ -473,19 +419,19 @@ const AddInterview = (props) => {
                   </Col>
                 </Row>
 
-                <Button color="primary" type="button" onClick={AddInterview}>
-                  Submit
+                <Button color="primary" type="button" onClick={AddInterview} disabled={isLoading}>
+                  {isLoading ? "Processing..." : "Submit"}
                 </Button>
               </AvForm>
             </CardBody>
           </Card>
         </Col>
         <Col xl="6">
-          <h3>Available Questions: {availableQuestions}</h3>
+          <h3>Available Questions: {availableQuestions ?? "-"}</h3>
         </Col>
       </Row>
     </React.Fragment>
   );
 };
 
-export default connect(null, { setBreadcrumbItems })(AddInterview);
+export default connect(null, { setBreadcrumbItems })(AddCompanyInterview);

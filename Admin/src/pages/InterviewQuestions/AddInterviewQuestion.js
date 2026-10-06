@@ -1,127 +1,108 @@
-import React, { useEffect, useState } from "react";
-import {
-  Row,
-  Col,
-  Card,
-  CardBody,
-  FormGroup,
-  Button,
-  CardTitle,
-  Label,
-} from "reactstrap";
-import { AvForm, AvField } from "availity-reactstrap-validation";
+import React, { useEffect, useState } from "react"
+import { Row, Col, Card, CardBody, FormGroup, Button, Label, Spinner } from "reactstrap"
+import { AvForm } from "availity-reactstrap-validation"
 import Select from "react-select"
-import { ToastContainer, toast, Bounce } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-import { connect } from "react-redux";
-import { setBreadcrumbItems } from "../../store/actions";
-import axios from "axios";
+import { toast } from "react-toastify"
+import { connect } from "react-redux"
+import { setBreadcrumbItems } from "../../store/actions"
+import axios from "axios"
 import { useNavigate } from "react-router-dom"
+import { apiUrl, getErrorMessage } from "../../config/api"
 
-const AddTopic = (props) => {
-  document.title = "Technial Hub | Add Interview Question";
+const breadcrumbItems = [
+  { title: "Mpod", link: "#" },
+  { title: "Interview Questions", link: "/interview-questions-list" },
+  { title: "Add Interview Question", link: "#" },
+]
 
-  const breadcrumbItems = [
-    { title: "TechnicalHub", link: "#" },
-    { title: "Interview Questions", link: "/topics-list" },
-    { title: "Add Interview Question", link: "/add-topic" },
-  ];
+const AddInterviewQuestion = props => {
+  document.title = "Add Interview Question | Mpod"
 
-  const [data, setData] = useState({});
-  const [technologyData, setTechnologyData] = useState([]);
-  const [selectedCompanies, setSelectedCompanies] = useState([]);
-  const [selectedTechnology, setSelectedTechnology] = useState(null);
-  const [companyData, setCompanyData] = useState([]);
-  const [file, setFile] = useState(null);
-  const navigate = useNavigate();
+  const [technologyData, setTechnologyData] = useState([])
+  const [selectedCompanies, setSelectedCompanies] = useState([])
+  const [selectedTechnology, setSelectedTechnology] = useState(null)
+  const [companyData, setCompanyData] = useState([])
+  const [file, setFile] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  const navigate = useNavigate()
 
   useEffect(() => {
-    props.setBreadcrumbItems('Add Interview Question', breadcrumbItems);
-    fetchTechnologyData();
-    fetchCompaniesData();
-  }, []);
+    props.setBreadcrumbItems("Add Interview Question", breadcrumbItems)
+    fetchTechnologyData()
+    fetchCompaniesData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const fetchCompaniesData = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
     try {
-      const response = await axios.get(backendUrl + 'companies-list');
-      if (response.status === 200) {
-        setCompanyData(response.data);
-      }
+      const response = await axios.get(apiUrl("companies-list"))
+      setCompanyData(Array.isArray(response.data) ? response.data : [])
     } catch (error) {
-      console.log("Error fetching company data:", error);
+      toast.error(getErrorMessage(error, "Failed to load companies."))
     }
-  };
+  }
 
   const fetchTechnologyData = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
     try {
-      const response = await axios.get(backendUrl + 'get-technologies');
-      if (response.status === 200) {
-        setTechnologyData(response.data);
-      }
+      const response = await axios.get(apiUrl("get-technologies"))
+      setTechnologyData(Array.isArray(response.data) ? response.data : [])
     } catch (error) {
-      console.log("Error fetching technology data:", error);
+      toast.error(getErrorMessage(error, "Failed to load technologies."))
     }
-  };
+  }
 
-  const technologyOptions = technologyData.map((tech) => ({
+  const technologyOptions = technologyData.map(tech => ({
     label: tech.technology_name,
-    value: tech._id
-  }));
+    value: tech._id,
+  }))
 
-  const companyOptions = companyData.map((comp) => ({
+  const companyOptions = companyData.map(comp => ({
     label: comp.company_name,
-    value: comp._id
-  }));
+    value: comp._id,
+  }))
 
-  const addTopic = async () => {
+  const addQuestions = async () => {
     if (!selectedTechnology) {
-      toast.error("Please select a technology");
-      return;
+      toast.error("Please select a technology")
+      return
     }
 
     if (!file) {
-      toast.error("Please upload a topic file");
-      return;
+      toast.error("Please upload a questions file")
+      return
     }
 
-    const previous_asked_status = selectedCompanies.length > 0 ? 1 : 0;
-    const companyIds = selectedCompanies.map(company => company.value);
+    const companies = selectedCompanies || []
+    const previous_asked_status = companies.length > 0 ? 1 : 0
+    const companyIds = companies.map(company => company.value)
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('company', JSON.stringify(companyIds));
-    formData.append('technology', selectedTechnology.value);
-    formData.append('previous_asked_status', previous_asked_status);
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("company", JSON.stringify(companyIds))
+    formData.append("technology", selectedTechnology.value)
+    formData.append("previous_asked_status", previous_asked_status)
 
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-
+    setSubmitting(true)
     try {
-      const response = await axios.post(backendUrl + 'add-interview-questions', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-
-      if (response.status === 200) {
-        toast.success('Topic created successfully');
-        setTimeout(() => navigate(`/topics-list`), 2000);
-      }
+      await axios.post(apiUrl("add-interview-questions"), formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      toast.success("Interview questions added successfully")
+      navigate("/interview-questions-list")
     } catch (error) {
-      console.error('Error adding topic:', error);
-      toast.error("Something went wrong while adding the topic");
+      toast.error(getErrorMessage(error, "Something went wrong while adding the questions"))
+    } finally {
+      setSubmitting(false)
     }
-  };
+  }
 
-  const handleFileChange = (event) => {
-    setFile(event.target.files[0]);
-  };
+  const handleFileChange = event => {
+    setFile(event.target.files[0] || null)
+  }
 
   return (
     <React.Fragment>
       <Row>
-        <ToastContainer transition={Bounce} />
         <Col xl="6">
           <Card>
             <CardBody>
@@ -160,16 +141,13 @@ const AddTopic = (props) => {
                   <Col md="6">
                     <FormGroup>
                       <Label>Upload questions File</Label>
-                      <input
-                        type="file"
-                        className="form-control"
-                        onChange={handleFileChange}
-                      />
+                      <input type="file" className="form-control" onChange={handleFileChange} />
                     </FormGroup>
                   </Col>
                 </Row>
 
-                <Button color="primary" type="button" onClick={addTopic}>
+                <Button color="primary" type="button" onClick={addQuestions} disabled={submitting}>
+                  {submitting && <Spinner size="sm" className="me-1" />}
                   Submit
                 </Button>
               </AvForm>
@@ -178,7 +156,7 @@ const AddTopic = (props) => {
         </Col>
       </Row>
     </React.Fragment>
-  );
-};
+  )
+}
 
-export default connect(null, { setBreadcrumbItems })(AddTopic);
+export default connect(null, { setBreadcrumbItems })(AddInterviewQuestion)

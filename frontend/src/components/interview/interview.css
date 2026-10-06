@@ -1,0 +1,117 @@
+/* Shared styles for the interview, kiosk and login screens (dark theme). */
+.mpod-center {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 140px 16px 40px;
+  background-color: #1c1c1c;
+  box-sizing: border-box;
+}
+.mpod-panel {
+  width: 100%;
+  max-width: 1100px;
+  background: #2b2b2b;
+  border: 1px solid #ffffff3d;
+  border-radius: 15px;
+  padding: 24px;
+  color: #fff;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+}
+.mpod-panel-narrow { max-width: 560px; }
+.mpod-panel-header {
+  background: #333;
+  border: 1px solid #444;
+  border-radius: 10px;
+  padding: 10px 15px;
+  margin: -8px -8px 16px;
+  text-align: center;
+}
+.mpod-panel-header h2,
+.mpod-title {
+  color: #fff;
+  font-size: 18px;
+  margin: 0;
+  font-family: Orbitron, sans-serif;
+}
+.mpod-countdown {
+  text-align: center;
+  font-family: Orbitron, sans-serif;
+  font-size: 14px;
+}
+.mpod-countdown span,
+.mpod-accent { color: #5bf3e9; }
+.mpod-strong { font-weight: bold; }
+.mpod-muted { color: #bbb; font-size: 14px; margin: 4px 0; }
+.mpod-warn { color: #ffd166; font-size: 14px; margin: 8px 0; }
+.mpod-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+.mpod-card { background: #3b3b3b; border-radius: 10px; padding: 15px; margin-bottom: 16px; }
+.mpod-card p { margin: 0 0 4px; }
+.mpod-rules { color: #fff; font-size: 14px; padding-left: 18px; line-height: 1.7; }
+.mpod-intro { display: flex; gap: 24px; flex-wrap: wrap; }
+.mpod-intro-text { flex: 1 1 360px; }
+.mpod-intro-photo { flex: 0 1 320px; }
+.mpod-intro-photo img { width: 100%; max-width: 320px; border-radius: 12px; }
+.mpod-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.mpod-btn {
+  padding: 10px 18px;
+  border-radius: 6px;
+  border: 1px solid #ffffff4d;
+  background: #3b3b3b;
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+}
+.mpod-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.mpod-btn:focus-visible,
+.mpod-textarea:focus-visible,
+.mpod-input:focus-visible { outline: 2px solid #5bf3e9; outline-offset: 2px; }
+.mpod-btn-primary { background: linear-gradient(90deg, #008738, #4caf7d); border: none; color: #fff; }
+.mpod-question { display: flex; gap: 24px; flex-wrap: wrap; }
+.mpod-question-main { flex: 2 1 420px; display: flex; flex-direction: column; }
+.mpod-question-side { flex: 1 1 200px; display: flex; justify-content: center; align-items: center; }
+.mpod-question-text { color: #fff; font-size: 17px; line-height: 1.7; margin: 0 0 16px; }
+.mpod-answer-box {
+  background: #3b3b3b;
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 15px;
+  min-height: 200px;
+  max-height: 320px;
+  overflow-y: auto;
+  color: #ddd;
+  font-size: 15px;
+  line-height: 1.7;
+  margin-top: 8px;
+}
+.mpod-answer-wait { display: flex; justify-content: center; align-items: center; }
+.mpod-textarea,
+.mpod-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #3b3b3b;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 15px;
+}
+.mpod-textarea { min-height: 200px; margin-top: 8px; resize: vertical; }
+.mpod-tall { min-height: 380px; }
+.mpod-code { font-family: Menlo, Consolas, monospace; font-size: 14px; tab-size: 4; }
+.mpod-coding { max-width: 1500px; }
+.mpod-coding-grid { display: flex; gap: 24px; flex-wrap: wrap; }
+.mpod-coding-problem { flex: 1 1 420px; min-width: 0; }
+.mpod-coding-work { flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; }
+.mpod-scroll { background: #333; border-radius: 10px; padding: 15px; max-height: 520px; overflow-y: auto; }
+.mpod-scroll h4 { color: #fff; font-size: 15px; margin: 12px 0 6px; }
+.mpod-html { color: #ddd; overflow-wrap: anywhere; }
+.mpod-html img { max-width: 100%; height: auto; }
+.mpod-pre { white-space: pre-wrap; color: #9c9aa5; background: transparent; border: none; margin: 0; font-size: 14px; }
+.mpod-field { display: block; margin-bottom: 14px; }
+.mpod-field label { display: block; margin-bottom: 6px; color: #ddd; font-size: 14px; }
+@media (max-width: 600px) {
+  .mpod-center { padding-top: 110px; }
+  .mpod-panel { padding: 16px; }
+  .mpod-tall { min-height: 260px; }
+}

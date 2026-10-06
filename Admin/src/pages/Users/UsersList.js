@@ -1,183 +1,173 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { MDBDataTable } from "mdbreact";
-import { Row, Col, Card, CardBody, CardTitle, Button, Badge } from "reactstrap";
-import { MutatingDots } from "react-loader-spinner";
+import { Row, Col, Card, CardBody, CardTitle, Button, Badge, Input, Label } from "reactstrap";
 import { connect } from "react-redux";
-import { Link, useNavigate } from "react-router-dom";
-import { ToastContainer, toast, Bounce } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
-import { setBreadcrumbItems } from "../../store/actions";
+import { Link } from "react-router-dom";
+import { toast } from "react-toastify";
 import axios from "axios";
+import { setBreadcrumbItems } from "../../store/actions";
+import { apiUrl, IMAGE_BASE, getErrorMessage } from "../../config/api";
+import LoadState from "../../components/Common/LoadState";
+import ConfirmModal from "../../components/Common/ConfirmModal";
+import useTenantUsers from "./useTenantUsers";
 import "./datatables.scss";
-import DeleteConfirmationModal from "./DeleteConfirmationModal";
-import axiosInstance from "../../api/axiosInstance";
+
+const breadcrumbItems = [
+  { title: "Mpod", link: "#" },
+  { title: "Users", link: "#" },
+  { title: "Users List", link: "#" },
+];
 
 const UsersList = (props) => {
-  document.title = "Users list | Technical Hub - All the list of Users";
+  document.title = "Users List | Mpod";
 
-  const navigate = useNavigate();
-  const [user, setUser] = useState(null);
-  const [userData, setUserData] = useState([]);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [userToDelete, setUserToDelete] = useState(null);
-
-  const breadcrumbItems = useMemo(() => [
-    { title: "Technical Hub", link: "#" },
-    { title: "Users", link: "#" },
-    { title: "Users List", link: "#" },
-  ], []);
+  const { setBreadcrumbItems } = props;
+  const { isPlatform, tenants, tenantId, setTenantId, tenantName, users, setUsers, loading, error, reload } =
+    useTenantUsers();
+  const [userToDeactivate, setUserToDeactivate] = useState(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    props.setBreadcrumbItems("Users", breadcrumbItems);
-  }, [props, breadcrumbItems]); 
-  useEffect(() => {
-    fetchCurrentUserData();
-  }, []); 
-  useEffect(() => {
-    if (user && ["tenantadmin","admin", "super admin"].includes(user.role)) {
-      console.log("hello")
-      fetchData();
-    }
-  }, [user]); 
+    setBreadcrumbItems("Users", breadcrumbItems);
+  }, [setBreadcrumbItems]);
 
-  const fetchCurrentUserData = async () => {
+  const closeModal = () => {
+    if (!busy) setUserToDeactivate(null);
+  };
+
+  const handleDeactivate = async () => {
+    if (!userToDeactivate) return;
+    const target = userToDeactivate;
+    setBusy(true);
     try {
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-
-      const response = await axios.get(backendUrl+"get-admin-current-user");
-      if (response.data) {
-        setUser(response.data);
-      } else {
-        navigate("/login");
-      }
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      navigate("/login");
+      const response = await axios.delete(apiUrl(`delete-user/${target._id}`));
+      toast.success((response.data && response.data.message) || "User deactivated.");
+      setUsers((prev) => prev.map((u) => (u._id === target._id ? { ...u, status: 0 } : u)));
+      setUserToDeactivate(null);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to deactivate user."));
+    } finally {
+      setBusy(false);
     }
   };
 
-  const fetchData = async () => {
-    if (!user) return;
-
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-    try {
-      const response = await axios.get(`${backendUrl}get-users/${user.t_id}`);
-      if (response.status === 200) {
-        setUserData(response.data); 
-      }
-    } catch (error) {
-      console.error("Error fetching data:", error);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!userToDelete) return;
-
-    const backendUrl = process.env.REACT_APP_BACKEND_URL;
-    try {
-      const response = await axios.delete(`${backendUrl}/delete-user/${userToDelete._id}`);
-      if (response.status === 200) {
-        toast.success("User deleted successfully", {
-          position: "top-right",
-          autoClose: 5000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-          progress: undefined,
-          theme: "light",
-          transition: Bounce,
-        });
-
-        setUserData(prevData => prevData.filter(u => u._id !== userToDelete._id));
-        setShowDeleteModal(false);
-      }
-    } catch (error) {
-      console.error("Error deleting user:", error);
-    }
-  };
-
-  const toggleDeleteModal = (user) => {
-    setUserToDelete(user);
-    setShowDeleteModal(!showDeleteModal);
-  };
-
-  const backendImageUrl = process.env.REACT_APP_BACKEND_IMAGE_URL;
-
-  const data = useMemo(() => ({
-    columns: [
-      { label: "Profile Pic", field: "profile_pic", sort: "asc", width: 150 },
-      { label: "Name", field: "first_name", sort: "asc", width: 150 },
-      { label: "Roll No", field: "roll_no", sort: "asc", width: 150 },
-      { label: "Gender", field: "gender", sort: "asc", width: 150 },
-      { label: "Email", field: "email", sort: "asc", width: 150 },
-      { label: "Role", field: "role", sort: "asc", width: 150 },
-      { label: "Status", field: "status", sort: "asc", width: 30 },
-      { label: "Action", field: "actions", sort: "asc", width: 30 },
-    ],
-    rows: userData.map(user => ({
-      first_name: user.first_name,
-      email: user.email,
-      roll_no: user.roll_no,
-      gender: user.gender,
-      role: user.role,
-      status: user.status === 1 ? <Badge color="success">Active</Badge> : <Badge color="danger">Inactive</Badge>,
-      profile_pic: (
-        <img
-          src={`${backendImageUrl}profile-pics/${user.roll_no}.png`}
-          alt="Profile Icon"
-          width="50px"
-          onError={(e) => {
-            e.target.onerror = null;
-            e.target.src = `${backendImageUrl}profile-pics/default.png`;
-          }}
-        />
-      ),
-      actions: (
-        <div>
-          <Link to={`/edit-user/${user._id}`} className="btn btn-info btn-sm me-2">Edit</Link>
-          <Button color="danger" size="sm" onClick={() => toggleDeleteModal(user)}>Delete</Button>
-        </div>
-      ),
-    })),
-  }), [userData, backendImageUrl]); 
+  const data = useMemo(
+    () => ({
+      columns: [
+        { label: "Profile Pic", field: "profile_pic", sort: "disabled", width: 80 },
+        { label: "Name", field: "first_name", sort: "asc", width: 150 },
+        { label: "Roll No", field: "roll_no", sort: "asc", width: 150 },
+        { label: "Gender", field: "gender", sort: "asc", width: 100 },
+        { label: "Email", field: "email", sort: "asc", width: 150 },
+        { label: "Role", field: "role", sort: "asc", width: 120 },
+        { label: "Status", field: "status", sort: "asc", width: 80 },
+        { label: "Action", field: "actions", sort: "disabled", width: 160 },
+      ],
+      rows: users.map((u) => ({
+        first_name: u.first_name,
+        email: u.email,
+        roll_no: u.roll_no,
+        gender: u.gender,
+        role: u.role,
+        status:
+          Number(u.status) === 1 ? (
+            <Badge color="success" className="bg-success">Active</Badge>
+          ) : (
+            <Badge color="danger" className="bg-danger">Inactive</Badge>
+          ),
+        profile_pic: (
+          <img
+            src={`${IMAGE_BASE}profile-pics/${u.roll_no}.png`}
+            alt="Profile"
+            width="50px"
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = `${IMAGE_BASE}profile-pics/default.png`;
+            }}
+          />
+        ),
+        actions: (
+          <div>
+            <Link to={`/edit-user/${u._id}`} className="btn btn-info btn-sm me-2">
+              Edit
+            </Link>
+            <Button
+              color="danger"
+              size="sm"
+              disabled={Number(u.status) !== 1}
+              onClick={() => setUserToDeactivate(u)}
+            >
+              Deactivate
+            </Button>
+          </div>
+        ),
+      })),
+    }),
+    [users]
+  );
 
   return (
     <React.Fragment>
       <Row>
-        <ToastContainer />
         <Col className="col-12">
           <Card>
-            <CardBody className="d-flex justify-content-between align-items-center">
-              <CardTitle className="h4">{user&&user.organization}-Users List</CardTitle>
-              <Link to="/add-user">
-                <Button color="primary">ADD Users</Button>
-              </Link>
+            <CardBody className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <CardTitle className="h4 mb-0">
+                {tenantName ? `${tenantName} - ` : ""}Users List
+              </CardTitle>
+              <div className="d-flex align-items-center gap-2">
+                {isPlatform && (
+                  <div className="d-flex align-items-center gap-2">
+                    <Label for="tenantSelect" className="mb-0 text-nowrap">Tenant</Label>
+                    <Input
+                      id="tenantSelect"
+                      type="select"
+                      value={tenantId || ""}
+                      onChange={(e) => setTenantId(e.target.value)}
+                    >
+                      {!tenants.some((t) => t._id === tenantId) && (
+                        <option value={tenantId || ""}>{tenantName || "Current tenant"}</option>
+                      )}
+                      {tenants.map((t) => (
+                        <option key={t._id} value={t._id}>
+                          {t.organization_name}
+                        </option>
+                      ))}
+                    </Input>
+                  </div>
+                )}
+                <Link to="/add-user" className="btn btn-primary text-nowrap">
+                  Add Users
+                </Link>
+              </div>
             </CardBody>
             <CardBody>
-              {userData.length > 0 ? (
+              <LoadState
+                loading={loading}
+                error={error}
+                empty={!users.length}
+                emptyText="No users found for this tenant."
+                onRetry={reload}
+              >
                 <MDBDataTable responsive bordered data={data} noBottomColumns />
-              ) : (
-            <CardBody className="d-flex justify-content-between align-items-center">
-
-                <div className="text-center">
-                  <MutatingDots
-                    visible={true}
-                    height="100"
-                    width="100"
-                    color="#2B3A4A"
-                    secondaryColor="#2B3A4A"
-                    radius="12.5"
-                    ariaLabel="mutating-dots-loading"
-                  />
-                </div>
-            </CardBody>
-              )}
+              </LoadState>
             </CardBody>
           </Card>
         </Col>
       </Row>
-      <DeleteConfirmationModal isOpen={showDeleteModal} toggle={toggleDeleteModal} onDelete={handleDelete} />
+      <ConfirmModal
+        isOpen={!!userToDeactivate}
+        toggle={closeModal}
+        onConfirm={handleDeactivate}
+        title="Deactivate user"
+        message={
+          userToDeactivate
+            ? `Deactivate ${userToDeactivate.first_name} (${userToDeactivate.roll_no})? They will no longer be able to log in.`
+            : ""
+        }
+        confirmLabel="Deactivate"
+        busy={busy}
+      />
     </React.Fragment>
   );
 };

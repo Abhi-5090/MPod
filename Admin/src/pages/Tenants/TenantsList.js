@@ -1,343 +1,157 @@
-// import React, { useEffect, useState } from "react"
-// import { MDBDataTable } from "mdbreact"
-// import { Row, Col, Card, CardBody, CardTitle, Button, Badge } from "reactstrap"
-// import { MutatingDots } from 'react-loader-spinner';
-// import { connect } from "react-redux";
-// import { Link } from "react-router-dom";
-// import { ToastContainer, toast, Bounce } from 'react-toastify';
-// import 'react-toastify/dist/ReactToastify.css';
-// //Import Action to copy breadcrumb items from local state to redux state
-// import { setBreadcrumbItems } from "../../store/actions";
-// import axios from "axios";
-// import "./datatables.scss"
-// import axiosInstance from "../../api/axiosInstance";
+import React, { useCallback, useEffect, useState } from "react"
+import PropTypes from "prop-types"
+import { MDBDataTable } from "mdbreact"
+import { Row, Col, Card, CardBody, CardTitle, Button, Badge } from "reactstrap"
+import { connect } from "react-redux"
+import { Link } from "react-router-dom"
+import { toast } from "react-toastify"
+import axios from "axios"
 
-// import DeleteConfirmationModal from "./DeleteConfirmationModal";
-// const TenantsList = (props) => {
-//   document.title = "Tenants list | Technical Hub - All the list of Tenants";
-//   const breadcrumbItems = [
-//     { title: "Technical Hub", link: "#" },
-//     { title: "Tenants", link: "#" },
-//     { title: "Tenants List", link: "#" },
-//   ]
-//   const [userData, setUserData] = useState([]);
-//   const [showDeleteModal, setShowDeleteModal] = useState(false);
-//   const [userToDelete, setUserToDelete] = useState(null);
-//   const [user, setUser] = useState(null);
+import { setBreadcrumbItems } from "../../store/actions"
+import { apiUrl, getErrorMessage } from "../../config/api"
+import LoadState from "../../components/Common/LoadState"
+import ConfirmModal from "../../components/Common/ConfirmModal"
+import "./datatables.scss"
 
-//   useEffect(() => {
-//     props.setBreadcrumbItems('Users', breadcrumbItems);
-//     fetchData();
-//   }, []);
-//   useEffect(() => {
-//     fetchCurrentUserData();
+const breadcrumbItems = [
+  { title: "Mpod", link: "#" },
+  { title: "Tenants", link: "#" },
+  { title: "Tenants List", link: "#" },
+]
 
-//   }, []);
+const columns = [
+  { label: "Organization Name", field: "organization_name", sort: "asc", width: 150 },
+  { label: "Code", field: "organization_code", sort: "asc", width: 100 },
+  { label: "Contact Person", field: "contact_person", sort: "asc", width: 150 },
+  { label: "Email", field: "email", sort: "asc", width: 150 },
+  { label: "Credits", field: "active_credits", sort: "asc", width: 100 },
+  { label: "Status", field: "status", sort: "disabled", width: 100 },
+  { label: "Actions", field: "actions", sort: "disabled", width: 220 },
+]
 
-//   const fetchCurrentUserData = async () => {
-//     try {
-//     const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-
-//       const response = await axios.get(backendUrl+"get-admin-current-user");
-//       console.log(response.data)
-//       setUser(response.data);
-   
-//     } catch (error) {
-//       console.log(error)
-
-//       // navigate('/login');
-//       console.error("Error fetching user data", error);
-//     }
-//   };
-
-//   // useEffect(() => {
-//   //   if (user&&user.role == 'admin' || user.role == 'superadmin') {
-//   //   }
-//   //   else {
-//   //     alert("your not autherized")
-//   //     window.location.href = '/admin/login';
-//   //   }
-//   // }, [user]);
-
-//   const fetchData = async () => {
-//     const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-//     try {
-//       const response = await axios.get(backendUrl + 'get-tenants');
-//       console.log(response.data)
-//       if (response.status === 200) {
-//         setUserData(response.data);
-//       }
-//     } catch (error) {
-//       console.log("Error fetching data:", error);
-//     }
-//   };
-
-//   const handleDelete = async (user) => {
-//     const backendUrl = process.env.REACT_APP_BACKEND_URL;
-//     const response = await axios.delete(`${backendUrl}delete-user/${userToDelete._id}`);
-//     if (response.status == 200) {
-//       console.log("User deleted:", userToDelete);
-//       toast.success('User deleted successfully', {
-//         position: "top-right",
-//         autoClose: 5000,
-//         hideProgressBar: false,
-//         closeOnClick: true,
-//         pauseOnHover: true,
-//         draggable: true,
-//         progress: undefined,
-//         theme: "light",
-//         transition: Bounce,
-//       });
-//     }
-//     const updatedUserData = userData.filter(user => user._id !== userToDelete._id);
-//     setUserData(updatedUserData);
-//     setShowDeleteModal(false);
-//   };
-
-//   const toggleDeleteModal = (user) => {
-//     setUserToDelete(user);
-//     setShowDeleteModal(!showDeleteModal);
-//   };
-//   const backendImageUrl = process.env.REACT_APP_BACKEND_IMAGE_URL
-//   const data = {
-//     columns: [
-//       { label: "Name", field: "organization_name", sort: "asc", width: 150 },
-//       { label: "Contact Person", field: "contact_person", sort: "asc", width: 150 },
-//       { label: "Email", field: "email", sort: "asc", width: 150 },
-//       { label: "Assigned Credits", field: "assigned_credits", sort: "asc", width: 150 },
-//       { label: "Active Credits", field: "active_credits", sort: "asc", width: 150 },
-//       { label: "", field: "status", sort: "asc", width: 30 },
-//       // { label: "Action", field: "actions", sort: "asc", width: 30 },
-//     ],
-//     rows: userData.map(user => ({
-//       organization_name: user.organization_name,
-//       contact_person: user.contact_person,
-//       email: user.email,
-//       assigned_credits: user.assigned_credits,
-//       active_credits: user.active_credits,
-//       status: user.status === 1 ? <Badge color="success" className="bg-success">Active</Badge> : <Badge color="danger" className="bg-danger">Inactive</Badge>,
-//       // actions: (
-//       //   <div>
-//       //     <Link to={`/edit-tenant/${user._id}`} className="btn btn-info btn-sm me-2">Edit</Link>
-//       //     {/* <Button color="danger" size="sm" onClick={() => toggleDeleteModal(user)}>Delete</Button> */}
-//       //   </div>
-//       // ),
-//     })),
-//   };
-
-//   const handleAddTenant = () => {
-//     window.location.href = '/add-tenant';
-//   }
-
-//   return (
-//     <React.Fragment>
-//       <Row>
-//         <ToastContainer
-//           position="top-right"
-//           autoClose={5000}
-//           hideProgressBar={false}
-//           newestOnTop={false}
-//           closeOnClick
-//           rtl={false}
-//           pauseOnFocusLoss
-//           draggable
-//           pauseOnHover
-//           theme="light"
-//           transition={Bounce}  // Corrected this line
-//         />
-
-//         {/* Same as */}
-//         <ToastContainer />
-//         <Col className="col-12">
-//           <Card>
-//              <CardBody className="d-flex justify-content-between align-items-center">
-//               <CardTitle className="h4">Add Tenant</CardTitle>
-//               <a href="add-tenant">
-//                 <Button type="button" color="primary" className="waves-effect waves-light" onClick={handleAddTenant}>ADD Tenant</Button>
-//               </a>
-//             </CardBody>
-//             <CardBody>
-//               {
-//                 data.rows.length !== 0 ? (
-//                   <MDBDataTable responsive bordered data={data} noBottomColumns />
-//                 ) : (
-//                   <div className="row">
-//                     <div className="col-md-2 offset-5">
-//                       <MutatingDots
-//                         visible={true}
-//                         height="100"
-//                         width="100"
-//                         color="#2B3A4A"
-//                         secondaryColor="#2B3A4A"
-//                         radius="12.5"
-//                         ariaLabel="mutating-dots-loading"
-//                         wrapperStyle={{}}
-//                         wrapperClass=""
-//                       />
-//                     </div>
-//                   </div>
-//                 )
-//               }
-//             </CardBody>
-//           </Card>
-//         </Col>
-//       </Row>
-//       <DeleteConfirmationModal isOpen={showDeleteModal} toggle={() => setShowDeleteModal(!showDeleteModal)} onDelete={handleDelete} />
-//     </React.Fragment>
-//   );
-// };
-
-
-// export default connect(null, { setBreadcrumbItems })(TenantsList);
-
-
-import React, { useEffect, useState } from "react";
-import { MDBDataTable } from "mdbreact";
-import { Row, Col, Card, CardBody, CardTitle, Button, Badge } from "reactstrap";
-import { MutatingDots } from 'react-loader-spinner';
-import { connect } from "react-redux";
-import { useNavigate } from "react-router-dom";
-import { ToastContainer, toast, Bounce } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-import { setBreadcrumbItems } from "../../store/actions";
-import axios from "axios";
-import "./datatables.scss";
-import DeleteConfirmationModal from "./DeleteConfirmationModal";
-
-const TenantsList = (props) => {
-  document.title = "Tenants list | Technical Hub";
-
-  const breadcrumbItems = [
-    { title: "Technical Hub", link: "#" },
-    { title: "Tenants", link: "#" },
-    { title: "Tenants List", link: "#" },
-  ];
-
-  const [tenantData, setTenantData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [tenantToDelete, setTenantToDelete] = useState(null);
-  const navigate = useNavigate();
+// GET get-tenants, DELETE delete-tenant/:id
+const TenantsList = props => {
+  const { setBreadcrumbItems: setBreadcrumbs } = props
+  const [tenants, setTenants] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [tenantToDelete, setTenantToDelete] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
-    props.setBreadcrumbItems('Tenants', breadcrumbItems);
-    fetchData();
-  }, []);
+    document.title = "Tenants | Mpod"
+    setBreadcrumbs("Tenants", breadcrumbItems)
+  }, [setBreadcrumbs])
 
-  const fetchData = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    setError(null)
     try {
-      const response = await axios.get(`${backendUrl}get-tenants`);
-      if (response.status === 200) {
-        setTenantData(response.data);
-      }
-    } catch (error) {
-      console.error("Error fetching tenants:", error);
-      toast.error("Failed to fetch tenants", { position: "top-right", autoClose: 4000, transition: Bounce });
+      const response = await axios.get(apiUrl("get-tenants"))
+      setTenants(Array.isArray(response.data) ? response.data : [])
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to fetch tenants."))
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }, [])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
   const handleDelete = async () => {
-    if (!tenantToDelete) return;
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
+    if (!tenantToDelete) return
+    setDeleting(true)
     try {
-      const response = await axios.delete(`${backendUrl}delete-tenant/${tenantToDelete._id}`);
-      if (response.status === 200) {
-        toast.success('Tenant deleted successfully', { position: "top-right", autoClose: 4000, transition: Bounce });
-        setTenantData(tenantData.filter(t => t._id !== tenantToDelete._id));
-      }
-    } catch (error) {
-      console.error("Error deleting tenant:", error);
-      toast.error("Failed to delete tenant", { position: "top-right", autoClose: 4000, transition: Bounce });
+      const response = await axios.delete(apiUrl(`delete-tenant/${tenantToDelete._id}`))
+      toast.success((response.data && response.data.message) || "Tenant deleted")
+      setTenants(prev => prev.filter(t => t._id !== tenantToDelete._id))
+      setTenantToDelete(null)
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to delete tenant."))
+    } finally {
+      setDeleting(false)
     }
-    setShowDeleteModal(false);
-  };
-
-  const toggleDeleteModal = (tenant) => {
-    setTenantToDelete(tenant);
-    setShowDeleteModal(!showDeleteModal);
-  };
-
-  const handleAddTenant = () => {
-    navigate("/add-tenant");
-  };
-
-  const handleEditTenant = (tenantId) => {
-    navigate(`/edit-tenant/${tenantId}`);
-  };
+  }
 
   const data = {
-    columns: [
-      { label: "Organization Name", field: "organization_name", sort: "asc", width: 150 },
-      { label: "Contact Person", field: "contact_person", sort: "asc", width: 150 },
-      { label: "Email", field: "email", sort: "asc", width: 150 },
-      { label: "Assigned Credits", field: "assigned_credits", sort: "asc", width: 150 },
-      { label: "Active Credits", field: "active_credits", sort: "asc", width: 150 },
-      { label: "Status", field: "status", sort: "asc", width: 100 },
-      { label: "Actions", field: "actions", sort: "disabled", width: 150 },
-    ],
-
-    rows: tenantData.map(tenant => ({
+    columns,
+    rows: tenants.map(tenant => ({
       organization_name: tenant.organization_name,
+      organization_code: tenant.organization_code,
       contact_person: tenant.contact_person,
       email: tenant.email,
-      assigned_credits: tenant.assigned_credits?.reduce((sum, val) => sum + Number(val), 0) || 0,
       active_credits: tenant.active_credits,
-      status: tenant.status === 1 
-        ? <Badge color="success" className="bg-success">Active</Badge> 
-        : <Badge color="danger" className="bg-danger">Inactive</Badge>,
+      status:
+        tenant.status === 1 ? (
+          <Badge className="bg-success">Active</Badge>
+        ) : (
+          <Badge className="bg-danger">Inactive</Badge>
+        ),
       actions: (
-        <div>
-          <Button color="info" size="sm" className="me-2" onClick={() => handleEditTenant(tenant._id)}>Edit</Button>
-          <Button color="danger" size="sm" onClick={() => toggleDeleteModal(tenant)}>Delete</Button>
+        <div className="d-flex flex-wrap gap-1">
+          <Link to={`/edit-tenant/${tenant._id}`} className="btn btn-info btn-sm">
+            Edit
+          </Link>
+          <Link to={`/tenant-credits/${tenant._id}`} className="btn btn-primary btn-sm">
+            Credits
+          </Link>
+          <Link to={`/kiosk-devices?tenant_id=${tenant._id}`} className="btn btn-secondary btn-sm">
+            Kiosks
+          </Link>
+          <Button color="danger" size="sm" onClick={() => setTenantToDelete(tenant)}>
+            Delete
+          </Button>
         </div>
       ),
     })),
-  };
+  }
 
   return (
     <React.Fragment>
-      <ToastContainer />
       <Row>
         <Col className="col-12">
           <Card>
             <CardBody className="d-flex justify-content-between align-items-center">
               <CardTitle className="h4 mb-0">Tenants List</CardTitle>
-              <Button color="primary" onClick={handleAddTenant}>+ Add Tenant</Button>
+              <Link to="/add-tenant" className="btn btn-primary">
+                + Add Tenant
+              </Link>
             </CardBody>
-
             <CardBody>
-              {loading ? (
-                <div className="row">
-                  <div className="col-md-2 offset-5">
-                    <MutatingDots
-                      visible={true}
-                      height="100"
-                      width="100"
-                      color="#2B3A4A"
-                      secondaryColor="#2B3A4A"
-                      radius="12.5"
-                      ariaLabel="loading"
-                    />
-                  </div>
-                </div>
-              ) : (
+              <LoadState
+                loading={loading}
+                error={error}
+                empty={!tenants.length}
+                emptyText="No tenants yet."
+                onRetry={fetchData}
+              >
                 <MDBDataTable responsive bordered data={data} noBottomColumns />
-              )}
+              </LoadState>
             </CardBody>
           </Card>
         </Col>
       </Row>
 
-      <DeleteConfirmationModal
-        isOpen={showDeleteModal}
-        toggle={() => setShowDeleteModal(!showDeleteModal)}
-        onDelete={handleDelete}
+      <ConfirmModal
+        isOpen={!!tenantToDelete}
+        toggle={() => setTenantToDelete(null)}
+        onConfirm={handleDelete}
+        busy={deleting}
+        title="Delete tenant"
+        message={
+          tenantToDelete
+            ? `Delete tenant "${tenantToDelete.organization_name}"? This cannot be undone.`
+            : ""
+        }
       />
     </React.Fragment>
-  );
-};
+  )
+}
 
-export default connect(null, { setBreadcrumbItems })(TenantsList);
+TenantsList.propTypes = {
+  setBreadcrumbItems: PropTypes.func,
+}
+
+export default connect(null, { setBreadcrumbItems })(TenantsList)

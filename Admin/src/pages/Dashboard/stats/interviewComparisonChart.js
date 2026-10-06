@@ -1,14 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
+import PropTypes from 'prop-types';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 
-const InterviewComparisonChart = ({ assignedData, attemptedData }) => {
-    const [mergedData, setMergedData] = useState([]);
+const asArray = value => (Array.isArray(value) ? value : []);
 
-    useEffect(() => {
-        const assigned = assignedData?.technologyWiseCounts || [];
-        const attempted = attemptedData?.technologyWiseCounts || [];
+const InterviewComparisonChart = ({ assignedData, attemptedData }) => {
+    const mergedData = useMemo(() => {
+        const assigned = asArray(assignedData?.technologyWiseCounts);
+        const attempted = asArray(attemptedData?.technologyWiseCounts);
 
         const technologyMap = {};
 
@@ -32,7 +33,7 @@ const InterviewComparisonChart = ({ assignedData, attemptedData }) => {
             }
         });
 
-        setMergedData(Object.values(technologyMap));
+        return Object.values(technologyMap);
     }, [assignedData, attemptedData]);
 
     return (
@@ -61,6 +62,11 @@ const InterviewComparisonChart = ({ assignedData, attemptedData }) => {
         </div>
 
     );
+};
+
+InterviewComparisonChart.propTypes = {
+    assignedData: PropTypes.object,
+    attemptedData: PropTypes.object,
 };
 
 export default InterviewComparisonChart;

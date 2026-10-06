@@ -1,96 +1,71 @@
-import React, { useEffect, useState } from "react";
-import {
-  Row,
-  Col,
-  Card,
-  CardBody,
-  Button,
-  Label,
-} from "reactstrap";
-import { AvForm, AvField } from "availity-reactstrap-validation";
-import Select from "react-select";
-import { connect } from "react-redux";
-import { setBreadcrumbItems } from "../../store/actions";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
-import { toast, ToastContainer } from "react-toastify";
-import 'react-toastify/dist/ReactToastify.css';
+import React, { useEffect, useState } from "react"
+import { Row, Col, Card, CardBody, Button, Label, Spinner } from "reactstrap"
+import { AvForm, AvField } from "availity-reactstrap-validation"
+import Select from "react-select"
+import { connect } from "react-redux"
+import { useNavigate } from "react-router-dom"
+import axios from "axios"
+import { toast } from "react-toastify"
+import { setBreadcrumbItems } from "../../store/actions"
+import { apiUrl, getErrorMessage } from "../../config/api"
 
-const AddTechnology = (props) => {
-  document.title = "Technical Hub | Add Technology";
-  const breadcrumbItems = [
-    { title: "TechnicalHub", link: "#" },
-    { title: "Technologies", link: "/technologies-list" },
-    { title: "Add Technology", link: "/add-technology" },
-  ];
+const categoryOptions = [
+  { label: "Low Code", value: "lowcode" },
+  { label: "High Code", value: "highcode" },
+  { label: "No Code", value: "nocode" },
+]
 
-  const navigate = useNavigate();
-  const [data, setData] = useState({});
-  const [selectedCategoryGroup, setSelectedCategoryGroup] = useState(null);
+const AddTechnology = props => {
+  document.title = "Add Technology | Mpod"
+
+  const navigate = useNavigate()
+  const [technologyName, setTechnologyName] = useState("")
+  const [selectedCategory, setSelectedCategory] = useState(null)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    props.setBreadcrumbItems("Add Technology", breadcrumbItems);
-  }, []);
-
-  const categoryOptionGroup = [
-    {
-      options: [
-        { label: "Low Code", value: "lowcode" },
-        { label: "High Code", value: "highcode" },
-        { label: "No Code", value: "nocode" },
-      ],
-    },
-  ];
-
-  const handleChange = (e) => {
-    setData({ ...data, technology_name: e.target.value });
-  };
-
-  const handleCategorySelectGroup = (selectedOption) => {
-    setSelectedCategoryGroup(selectedOption);
-  };
+    const breadcrumbItems = [
+      { title: "Mpod", link: "#" },
+      { title: "Technologies", link: "/technologies-list" },
+      { title: "Add Technology", link: "/add-technology" },
+    ]
+    props.setBreadcrumbItems("Add Technology", breadcrumbItems)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const addTechnology = async () => {
-    if (!data.technology_name || data.technology_name.trim() === "") {
-      toast.error("Technology name is required!");
-      return;
+    if (!technologyName.trim()) {
+      toast.error("Technology name is required!")
+      return
+    }
+    if (!selectedCategory) {
+      toast.error("Please select a technology category!")
+      return
     }
 
-    if (!selectedCategoryGroup) {
-      toast.error("Please select a technology category!");
-      return;
-    }
-
-    const dataList = {
-      technology_name: data.technology_name.trim(),
-      technology_category: selectedCategoryGroup.value,
-    };
-
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
+    setSaving(true)
     try {
-      const response = await axios.post(backendUrl + "add-technology", dataList);
-      if (response.status === 200) {
-        toast.success("Technology added successfully!");
-        setTimeout(() => navigate("/technologies-list"), 1500);
-      }
+      await axios.post(apiUrl("add-technology"), {
+        technology_name: technologyName.trim(),
+        technology_category: selectedCategory.value,
+      })
+      toast.success("Technology added successfully!")
+      navigate("/technologies-list")
     } catch (error) {
-      console.error("Error adding technology:", error);
-      toast.error("Something went wrong. Try again.");
+      toast.error(getErrorMessage(error, "Something went wrong. Try again."))
+    } finally {
+      setSaving(false)
     }
-  };
+  }
 
   return (
     <React.Fragment>
-      <ToastContainer position="top-right" autoClose={3000} />
       <Row>
         <Col xl="6">
           <Card>
             <CardBody>
               <h4 className="card-title">ADD Technology</h4>
-              <AvForm
-                className="needs-validation"
-                onValidSubmit={addTechnology}
-              >
+              <AvForm className="needs-validation" onValidSubmit={addTechnology}>
                 <Row>
                   <Col md="6">
                     <div className="mb-3">
@@ -103,7 +78,7 @@ const AddTechnology = (props) => {
                         className="form-control"
                         validate={{ required: { value: true } }}
                         id="validationCustom01"
-                        onChange={handleChange}
+                        onChange={e => setTechnologyName(e.target.value)}
                       />
                     </div>
                   </Col>
@@ -114,9 +89,9 @@ const AddTechnology = (props) => {
                     <div className="mb-3">
                       <Label>Select Category</Label>
                       <Select
-                        value={selectedCategoryGroup}
-                        onChange={handleCategorySelectGroup}
-                        options={categoryOptionGroup}
+                        value={selectedCategory}
+                        onChange={setSelectedCategory}
+                        options={categoryOptions}
                         classNamePrefix="select2-selection"
                         placeholder="Select a category"
                       />
@@ -124,7 +99,8 @@ const AddTechnology = (props) => {
                   </Col>
                 </Row>
 
-                <Button color="primary" type="submit">
+                <Button color="primary" type="submit" disabled={saving}>
+                  {saving && <Spinner size="sm" className="me-1" />}
                   Submit
                 </Button>
               </AvForm>
@@ -133,7 +109,7 @@ const AddTechnology = (props) => {
         </Col>
       </Row>
     </React.Fragment>
-  );
-};
+  )
+}
 
-export default connect(null, { setBreadcrumbItems })(AddTechnology);
+export default connect(null, { setBreadcrumbItems })(AddTechnology)

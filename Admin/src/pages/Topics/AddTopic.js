@@ -1,202 +1,122 @@
-import React, { useEffect, useState } from "react";
-import {
-  Row,
-  Col,
-  Card,
-  CardBody,
-  FormGroup,
-  Button,
-  CardTitle,
-  Label,
-} from "reactstrap";
-import { AvForm, AvField } from "availity-reactstrap-validation";
+import React, { useEffect, useState } from "react"
+import { Row, Col, Card, CardBody, Button, Label, Spinner } from "reactstrap"
+import { AvForm } from "availity-reactstrap-validation"
 import Select from "react-select"
-import { ToastContainer, toast, Bounce } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-import { connect } from "react-redux";
-import { setBreadcrumbItems } from "../../store/actions";
-import axios from "axios";
+import { toast } from "react-toastify"
+import { connect } from "react-redux"
 import { useNavigate } from "react-router-dom"
-const AddTopic = (props) => {
-  document.title = "Technial Hub| Add Topic";
+import axios from "axios"
+import { setBreadcrumbItems } from "../../store/actions"
+import { apiUrl, getErrorMessage } from "../../config/api"
 
-  const breadcrumbItems = [
-    { title: "TechnicalHub", link: "#" },
-    { title: "Topics", link: "/topics-list" },
-    { title: "Add Topic", link: "/add-topic" },
-  ];
-  const [data, setData] = useState({});
+const AddTopic = props => {
+  document.title = "Add Topic | Mpod"
+
+  const navigate = useNavigate()
   const [technologyData, setTechnologyData] = useState([])
-  const [selectedGroup, setselectedGroup] = useState(null)
-  const [selectedTechnologyGroup, setselectedTechnologyGroup] = useState(null)
   const [moduleData, setModuleData] = useState([])
-  const [file, setFile] = useState(null);
-  const navigate = useNavigate();
-  const [previewUrl, setPreviewUrl] = useState("");
+  const [selectedTechnology, setSelectedTechnology] = useState(null)
+  const [selectedModule, setSelectedModule] = useState(null)
+  const [file, setFile] = useState(null)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    props.setBreadcrumbItems('Add Topic', breadcrumbItems);
-    fetchTechnologyData()
-  }, []);
-  // useEffect(() => {
-  //   let authUser = JSON.parse(localStorage.getItem('authUser'));
-  //   if (authUser.role == 'admin' || authUser.role == 'superadmin') {
-  //   }
-  //   else {
-  //     alert("your not autherized")
-  //     localStorage.clear();
-  //     window.location.href = '/admin/login';
-  //   }
-  // }, []);
-  useEffect(() => {
-    if(selectedTechnologyGroup){
-      fetchData()
-    }
-    console.log(selectedTechnologyGroup)
-  }, [selectedTechnologyGroup])
-  // const fetchData = async () => {
-  //   const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-  //   try {
-  //     const response = await axios.get(backendUrl + 'get-modules');
-  //     if (response.status === 200) {
-  //       setModuleData(response.data);
-  //     }
-  //   } catch (error) {
-  //     console.log("Error fetching data:", error);
-  //   }
-  // };
+    const breadcrumbItems = [
+      { title: "Mpod", link: "#" },
+      { title: "Topics", link: "/topics-list" },
+      { title: "Add Topic", link: "/add-topic" },
+    ]
+    props.setBreadcrumbItems("Add Topic", breadcrumbItems)
 
-  const fetchData = async () => {
-    if (typeof (selectedTechnologyGroup) != 'undefined') {
-
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-      try {
-        const response = await axios.post(backendUrl + 'get-modules-by-technology', { technology_id: selectedTechnologyGroup.value });
-        if (response.status === 200) {
-          
-          setModuleData(response.data);
+    axios
+      .get(apiUrl("get-technologies"))
+      .then(response => setTechnologyData(Array.isArray(response.data) ? response.data : []))
+      .catch(err => {
+        if (err.response?.status !== 404) {
+          toast.error(getErrorMessage(err, "Failed to load technologies."))
         }
-      } catch (error) {
-        console.log("Error fetching data:", error);
-      }
-    };
-  }
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-
-
-  const fetchTechnologyData = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-    try {
-      const response = await axios.get(backendUrl + 'get-technologies');
-      if (response.status === 200) {
-        setTechnologyData(response.data);
-      }
-    } catch (error) {
-      console.log("Error fetching data:", error);
+  // Load the modules of the selected technology.
+  useEffect(() => {
+    setModuleData([])
+    if (!selectedTechnology) return
+    let cancelled = false
+    axios
+      .post(apiUrl("get-modules-by-technology"), { technology_id: selectedTechnology.value })
+      .then(response => {
+        if (!cancelled) setModuleData(Array.isArray(response.data) ? response.data : [])
+      })
+      .catch(err => {
+        if (!cancelled && err.response?.status !== 404) {
+          toast.error(getErrorMessage(err, "Failed to load modules."))
+        }
+      })
+    return () => {
+      cancelled = true
     }
-  };
+  }, [selectedTechnology])
 
-  const technologyOptionGroup = technologyData.map((ele) => ({
-    options: [
-      { label: ele.technology_name, value: ele._id }
-    ]
-  }));
+  const technologyOptions = technologyData.map(ele => ({ label: ele.technology_name, value: ele._id }))
+  const moduleOptions = moduleData.map(ele => ({ label: ele.module_name, value: ele._id }))
 
-
-  const optionGroup = moduleData.map((ele) => ({
-    options: [
-      { label: ele.module_name, value: ele._id }
-    ]
-  }));
-
-  const handleChange = (e) => {
-    setData({ ...data, topic_name: e.target.value });
-  };
-  function handleSelectGroup(selectedGroup) {
-    setselectedGroup(selectedGroup)
+  const handleTechnologyChange = option => {
+    setSelectedTechnology(option)
+    setSelectedModule(null)
   }
-
-  function handleSelectTechnologyGroup(selectedGroup) {
-    setselectedTechnologyGroup(selectedGroup)
-    console.log(selectedTechnologyGroup)
-  }
-
 
   const addTopic = async () => {
-    if (!selectedTechnologyGroup) {
-      toast.error("Please select a technology");
-      return;
+    if (!selectedTechnology) {
+      toast.error("Please select a technology")
+      return
     }
-    if (!selectedGroup) {
-      toast.error("Please select a module");
-      return;
+    if (!selectedModule) {
+      toast.error("Please select a module")
+      return
     }
     if (!file) {
-      toast.error("Please upload a topic file");
-      return;
+      toast.error("Please upload a topic file")
+      return
     }
-  
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('module', selectedGroup.value);
-    formData.append('technology', selectedTechnologyGroup.value);
-  
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-  
-    try {
-      const response = await axios.post(backendUrl + 'add-topic', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-      if (response.status === 200) {
-        toast.success('Topic created successfully');
-        setTimeout(() => navigate(`/topics-list`), 2000);
-      }
-    } catch (error) {
-      console.error('Error adding topic:', error);
-      toast.error("Something went wrong while adding the topic");
-    }
-  };
-  
 
-  const handleFileChange = (event) => {
-    setFile(event.target.files[0]);
-    console.log(event.target.files[0])
-  };
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("module", selectedModule.value)
+    formData.append("technology", selectedTechnology.value)
+
+    setSaving(true)
+    try {
+      await axios.post(apiUrl("add-topic"), formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      toast.success("Topic created successfully")
+      navigate("/topics-list")
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Something went wrong while adding the topic"))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <React.Fragment>
       <Row>
-      <ToastContainer
-          position="top-right"
-          autoClose={5000}
-          hideProgressBar={false}
-          newestOnTop={false}
-          closeOnClick
-          rtl={false}
-          pauseOnFocusLoss
-          draggable
-          pauseOnHover
-          theme="light"
-          transition={Bounce}  // Corrected this line
-        />
-
-        {/* Same as */}
-        <ToastContainer />
         <Col xl="6">
           <Card>
             <CardBody>
               <h4 className="card-title">ADD TOPIC</h4>
 
-              <AvForm className="needs-validation">
+              <AvForm className="needs-validation" onValidSubmit={addTopic}>
                 <Row>
                   <Col md="6">
                     <div className="mb-3">
                       <Label>Select technology</Label>
                       <Select
-                        value={selectedTechnologyGroup}
-                        onChange={handleSelectTechnologyGroup}
-                        options={technologyOptionGroup}
+                        value={selectedTechnology}
+                        onChange={handleTechnologyChange}
+                        options={technologyOptions}
                         classNamePrefix="select2-selection"
                       />
                     </div>
@@ -207,26 +127,31 @@ const AddTopic = (props) => {
                     <div className="mb-3">
                       <Label>Select Module</Label>
                       <Select
-                        value={selectedGroup}
-                        onChange={handleSelectGroup}
-                        options={optionGroup}
+                        value={selectedModule}
+                        onChange={setSelectedModule}
+                        options={moduleOptions}
                         classNamePrefix="select2-selection"
-                        // name="module"
+                        noOptionsMessage={() => (selectedTechnology ? "No modules" : "Select a technology first")}
                       />
                     </div>
                   </Col>
                 </Row>
-                <Row>            
+                <Row>
                   <Col md="6">
                     <div className="mb-3">
-                      <div className="mb-3">
-                        <label className="form-lable">Upload topics</label><br />
-                        <input type="file" className="form-control form-control-file" data-buttonname="btn-secondary" onChange={handleFileChange} />
-                      </div>
+                      <label className="form-label">Upload topics</label>
+                      <br />
+                      <input
+                        type="file"
+                        className="form-control form-control-file"
+                        data-buttonname="btn-secondary"
+                        onChange={e => setFile(e.target.files[0] || null)}
+                      />
                     </div>
                   </Col>
                 </Row>
-                <Button color="primary" type="button" onClick={addTopic}>
+                <Button color="primary" type="submit" disabled={saving}>
+                  {saving && <Spinner size="sm" className="me-1" />}
                   Submit
                 </Button>
               </AvForm>
@@ -235,7 +160,7 @@ const AddTopic = (props) => {
         </Col>
       </Row>
     </React.Fragment>
-  );
-};
+  )
+}
 
-export default connect(null, { setBreadcrumbItems })(AddTopic);
+export default connect(null, { setBreadcrumbItems })(AddTopic)

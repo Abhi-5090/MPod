@@ -1,88 +1,74 @@
-import React, { useEffect, useState } from "react"
+import React, { useCallback, useEffect, useState } from "react"
 import { MDBDataTable } from "mdbreact"
 import { Row, Col, Card, CardBody, CardTitle, Button, Badge } from "reactstrap"
-import { MutatingDots } from 'react-loader-spinner';
-import { connect } from "react-redux";
-import { Link } from "react-router-dom";
-import { ToastContainer, toast, Bounce } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import { connect } from "react-redux"
+import { Link } from "react-router-dom"
+import { toast } from "react-toastify"
+import axios from "axios"
 //Import Action to copy breadcrumb items from local state to redux state
-import { setBreadcrumbItems } from "../../store/actions";
-import axios from "axios";
+import { setBreadcrumbItems } from "../../store/actions"
+import { apiUrl, getErrorMessage } from "../../config/api"
+import LoadState from "../../components/Common/LoadState"
+import ConfirmModal from "../../components/Common/ConfirmModal"
+import ViewCodingQuestionModal from "./ViewCodingQuestionModal"
 import "./datatables.scss"
-import DeleteConfirmationModal from "./DeleteConfirmationModal";
-import ViewCodingQuestionModal from "./ViewCodingQuestionModal";
 
-const CodingQuestionsList = (props) => {
-  document.title = "Coding Questions list | Technical Hub - All the list of Coding Questions";
+const breadcrumbItems = [
+  { title: "Mpod", link: "#" },
+  { title: "Coding", link: "#" },
+  { title: "Coding Questions List", link: "#" },
+]
 
+const CodingQuestionsList = props => {
+  document.title = "Coding Questions | Mpod"
 
-  const breadcrumbItems = [
-    { title: "Technical Hub", link: "#" },
-    { title: "Coding", link: "#" },
-    { title: "Coding Questions List", link: "#" },
-  ]
-  const [questionData, setQuestionData] = useState([]);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [questionToDelete, setQuestionToDelete] = useState(null);
-  const [viewModalOpen, setViewModalOpen] = useState(false);
-  const [selectedQuestion, setSelectedQuestion] = useState(null);
-  
-  useEffect(() => {
-    props.setBreadcrumbItems('Coding Questions', breadcrumbItems);
-    fetchData();
-  }, []);
-  // useEffect(() => {
-  //   let authUser = JSON.parse(localStorage.getItem('authUser'));
-  //   if (authUser.role == 'admin' || authUser.role == 'superadmin') {
-  //   }
-  //   else {
-  //     alert("your not autherized")
-  //     localStorage.clear();
-  //     window.location.href = '/admin/login';
-  //   }
-  // }, []);
+  const [questions, setQuestions] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [questionToDelete, setQuestionToDelete] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+  const [viewModalOpen, setViewModalOpen] = useState(false)
+  const [selectedQuestion, setSelectedQuestion] = useState(null)
 
-  const fetchData = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    setError(null)
     try {
-      const response = await axios.get(backendUrl + 'get-coding-questions');
-      console.log(response.data)
-      if (response.status === 200) {
-        setQuestionData(response.data);
-      }
-    } catch (error) {
-      console.log("Error fetching data:", error);
+      const response = await axios.get(apiUrl("get-coding-questions"))
+      setQuestions(Array.isArray(response.data) ? response.data : [])
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to load coding questions."))
+    } finally {
+      setLoading(false)
     }
-  };
+  }, [])
 
-  const handleDelete = async (topic) => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-    const response = await axios.delete(`${backendUrl}delete-question/${questionToDelete._id}`);
-    if (response.status == 200) {
-      toast.success('Topic deleted successfully', {
-        position: "top-right",
-        autoClose: 5000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-        progress: undefined,
-        theme: "light",
-        transition: Bounce,
-      });
+  useEffect(() => {
+    props.setBreadcrumbItems("Coding Questions", breadcrumbItems)
+    fetchData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleDelete = async () => {
+    if (!questionToDelete) return
+    setDeleting(true)
+    try {
+      await axios.delete(apiUrl(`delete-coding-question/${questionToDelete._id}`))
+      toast.success("Coding question deleted successfully")
+      setQuestions(prev => prev.filter(q => q._id !== questionToDelete._id))
+      setQuestionToDelete(null)
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to delete coding question."))
+    } finally {
+      setDeleting(false)
     }
-    const updatedQuestionData = questionData.filter(question => question._id !== questionToDelete._id);
-    setQuestionData(updatedQuestionData);
+  }
 
-    setShowDeleteModal(false);
-  };
+  const handleView = question => {
+    setSelectedQuestion(question)
+    setViewModalOpen(true)
+  }
 
-  const toggleDeleteModal = (question) => {
-    setQuestionToDelete(question);
-    setShowDeleteModal(!showDeleteModal);
-  };
-  const backendImageUrl = process.env.REACT_APP_BACKEND_IMAGE_URL
   const data = {
     columns: [
       { label: "Problem", field: "problem_name", sort: "asc", width: 150 },
@@ -91,87 +77,76 @@ const CodingQuestionsList = (props) => {
       { label: "Status", field: "status", sort: "asc", width: 30 },
       { label: "Action", field: "actions", sort: "asc", width: 30 },
     ],
-    rows: questionData.map(question => ({
+    rows: questions.map(question => ({
       problem_name: question.problem_name,
       complexity: question.complexity,
       time: question.time,
-      status: question.status === 1 ? <Badge color="success" className="bg-success">Active</Badge> : <Badge color="danger" className="bg-danger">Inactive</Badge>,
+      status:
+        question.status === 1 ? (
+          <Badge color="success" className="bg-success">
+            Active
+          </Badge>
+        ) : (
+          <Badge color="danger" className="bg-danger">
+            Inactive
+          </Badge>
+        ),
       actions: (
         <div>
-          <Link to={`/edit-coding-question/${question._id}`} className="btn btn-info btn-sm me-2">Edit</Link>
-          <Button color="success" className="btn btn-sm bg-success" onClick={() => handleView(question)}>View</Button>
-
-          {/* <Button color="danger" className="d-none" size="sm" onClick={() => toggleDeleteModal(question)}>Delete</Button> */}
+          <Link to={`/edit-coding-question/${question._id}`} className="btn btn-info btn-sm me-2">
+            Edit
+          </Link>
+          <Button color="success" size="sm" className="me-2" onClick={() => handleView(question)}>
+            View
+          </Button>
+          <Button color="danger" size="sm" onClick={() => setQuestionToDelete(question)}>
+            Delete
+          </Button>
         </div>
       ),
     })),
-  };
-  const handleView = (question) => {
-    setSelectedQuestion(question);
-    setViewModalOpen(true);
-  };
-  
+  }
+
   return (
     <React.Fragment>
       <Row>
-        <ToastContainer
-          position="top-right"
-          autoClose={5000}
-          hideProgressBar={false}
-          newestOnTop={false}
-          closeOnClick
-          rtl={false}
-          pauseOnFocusLoss
-          draggable
-          pauseOnHover
-          theme="light"
-          transition={Bounce}  // Corrected this line
-        />
-
-        {/* Same as */}
-        <ToastContainer />
         <Col className="col-12">
           <Card>
             <CardBody className="d-flex justify-content-between align-items-center">
               <CardTitle className="h4">Coding Questions List</CardTitle>
-              <a href="add-coding-question">
-                <Button type="button" color="primary" className="waves-effect waves-light">ADD CODING QUESTIONS</Button>
-              </a>
+              <Link to="/add-coding-question" className="btn btn-primary waves-effect waves-light">
+                ADD CODING QUESTIONS
+              </Link>
             </CardBody>
             <CardBody>
-              {
-                data.rows.length !== 0 ? (
-                  <MDBDataTable responsive bordered data={data} noBottomColumns />
-                ) : (
-                  <div className="row">
-                    <div className="col-md-2 offset-5">
-                      <MutatingDots
-                        visible={true}
-                        height="100"
-                        width="100"
-                        color="#2B3A4A"
-                        secondaryColor="#2B3A4A"
-                        radius="12.5"
-                        ariaLabel="mutating-dots-loading"
-                        wrapperStyle={{}}
-                        wrapperClass=""
-                      />
-                    </div>
-                  </div>
-                )
-              }
+              <LoadState
+                loading={loading}
+                error={error}
+                empty={!questions.length}
+                emptyText="No coding questions found."
+                onRetry={fetchData}
+              >
+                <MDBDataTable responsive bordered data={data} noBottomColumns />
+              </LoadState>
             </CardBody>
           </Card>
         </Col>
       </Row>
-      <DeleteConfirmationModal isOpen={showDeleteModal} toggle={() => setShowDeleteModal(!showDeleteModal)} onDelete={handleDelete} />
+      <ConfirmModal
+        isOpen={!!questionToDelete}
+        toggle={() => setQuestionToDelete(null)}
+        onConfirm={handleDelete}
+        title="Confirm Delete"
+        message={`Are you sure you want to delete "${questionToDelete?.problem_name || "this coding question"}"?`}
+        busy={deleting}
+      />
       <ViewCodingQuestionModal
-  isOpen={viewModalOpen}
-  toggle={() => setViewModalOpen(!viewModalOpen)}
-  question={selectedQuestion}
-/>
+        isOpen={viewModalOpen}
+        toggle={() => setViewModalOpen(!viewModalOpen)}
+        question={selectedQuestion}
+      />
     </React.Fragment>
-  );
-};
+  )
+}
 
-export default connect(null, { setBreadcrumbItems })(CodingQuestionsList);
+export default connect(null, { setBreadcrumbItems })(CodingQuestionsList)

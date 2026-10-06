@@ -9,8 +9,7 @@ import {
   Input,
 } from "reactstrap";
 import Select from "react-select";
-import { ToastContainer, toast, Bounce } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import { toast } from 'react-toastify';
 import { connect } from "react-redux";
 import { setBreadcrumbItems } from "../../store/actions";
 import axios from "axios";
@@ -20,9 +19,24 @@ import draftToHtml from "draftjs-to-html";
 import htmlToDraft from "html-to-draftjs";
 import { EditorState, ContentState, convertToRaw } from "draft-js";
 import "react-draft-wysiwyg/dist/react-draft-wysiwyg.css";
+import { apiUrl, getErrorMessage } from "../../config/api";
+
+const complexityOptions = [
+  { label: "Easy", value: "easy" },
+  { label: "Medium", value: "medium" },
+  { label: "Hard", value: "hard" },
+];
+
+const timeOptions = [
+  { label: "15 min", value: "15" },
+  { label: "20 min", value: "20" },
+  { label: "25 min", value: "25" },
+  { label: "30 min", value: "30" },
+];
+
 
 const EditCodingQuestion = (props) => {
-  document.title = "Technical Hub | Edit Coding Question";
+  document.title = "Edit Coding Question | Mpod";
 
   const { questionId } = useParams();
   const navigate = useNavigate();
@@ -35,65 +49,55 @@ const EditCodingQuestion = (props) => {
   const [selectedTime, setSelectedTime] = useState(null);
   const [selectedCompany, setSelectedCompany] = useState(null);
   const [companies, setCompanies] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
   const uploadImageCallBack = (file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
         resolve({ data: { link: reader.result } });
       };
+      reader.onerror = reject;
       reader.readAsDataURL(file);
     });
   };
   useEffect(() => {
     props.setBreadcrumbItems('Edit Coding Question', [
-      { title: "TechnicalHub", link: "#" },
-      { title: "Coding Questions", link: "/companies-questions-list" },
-      { title: "Edit Coding Question", link: `/edit-coding-question/${questionId}` },
+      { title: "Mpod", link: "#" },
+      { title: "Coding Questions", link: "/coding-questions-list" },
+      { title: "Edit Coding Question", link: "#" },
+    ]);
+    loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questionId]);
+
+  // Load companies and the question together so the question loads even if the company list is empty.
+  const loadAll = async () => {
+    const [companiesRes, questionRes] = await Promise.allSettled([
+      axios.get(apiUrl("companies-list")),
+      axios.get(apiUrl(`get-coding-question-by-id/${questionId}`)),
     ]);
 
-    fetchCompanies();
-  }, []);
+    const companyList = companiesRes.status === "fulfilled" && Array.isArray(companiesRes.value.data) ? companiesRes.value.data : [];
+    setCompanies(companyList);
+    if (companiesRes.status === "rejected") toast.error(getErrorMessage(companiesRes.reason, "Failed to load companies."));
 
-  useEffect(() => {
-    if (companies.length > 0) {
-      fetchQuestionDetails();
+    if (questionRes.status === "rejected") {
+      toast.error(getErrorMessage(questionRes.reason, "Failed to load coding question."));
+      return;
     }
-  }, [companies]);
+    const data = questionRes.value.data || {};
+    const company = companyList.find(c => c._id === data.company);
 
-  const fetchCompanies = async () => {
-    try {
-      const response = await axios.get(`${process.env.REACT_APP_MPOD_BACKEND_URL}companies-list`);
-      if (response.status === 200) {
-        setCompanies(response.data);
-      }
-    } catch (error) {
-      console.error("Error fetching companies:", error);
-    }
-  };
+    setProblemName(data.problem_name || "");
+    setSelectedComplexity(complexityOptions.find(opt => opt.value === data.complexity) || null);
+    setSelectedTime(timeOptions.find(opt => opt.value === String(data.time)) || null);
+    setSelectedCompany(company ? { label: company.company_name, value: company._id } : null);
 
-  const fetchQuestionDetails = async () => {
-    try {
-      const response = await axios.get(`${process.env.REACT_APP_MPOD_BACKEND_URL}get-coding-question-by-id/${questionId}`);
-      if (response.status === 200) {
-        const data = response.data;
-
-        // Find the company from the list
-        const company = companies.find(c => c._id === data.company);
-
-        setProblemName(data.problem_name);
-        setSelectedComplexity(complexityOptions.find(opt => opt.value === data.complexity));
-        setSelectedTime(timeOptions.find(opt => opt.value === String(data.time)));
-        setSelectedCompany(company ? { label: company.company_name, value: company._id } : null);
-
-        // Convert HTML to EditorState
-        setEditorState(convertHtmlToEditorState(data.description));
-        setInputEditorState(convertHtmlToEditorState(data.input));
-        setOutputEditorState(convertHtmlToEditorState(data.output));
-        setConstraintsEditorState(convertHtmlToEditorState(data.constraints));
-      }
-    } catch (error) {
-      console.error("Error fetching question details:", error);
-    }
+    // Convert HTML to EditorState
+    setEditorState(convertHtmlToEditorState(data.description));
+    setInputEditorState(convertHtmlToEditorState(data.input));
+    setOutputEditorState(convertHtmlToEditorState(data.output));
+    setConstraintsEditorState(convertHtmlToEditorState(data.constraints));
   };
 
   const convertHtmlToEditorState = (html) => {
@@ -101,19 +105,6 @@ const EditCodingQuestion = (props) => {
     const contentState = ContentState.createFromBlockArray(blocksFromHtml.contentBlocks, blocksFromHtml.entityMap);
     return EditorState.createWithContent(contentState);
   };
-
-  const complexityOptions = [
-    { label: "Easy", value: "easy" },
-    { label: "Medium", value: "medium" },
-    { label: "Hard", value: "hard" },
-  ];
-
-  const timeOptions = [
-    { label: "15 min", value: "15" },
-    { label: "20 min", value: "20" },
-    { label: "25 min", value: "25" },
-    { label: "30 min", value: "30" },
-  ];
 
   const companyOptions = companies.map(company => ({
     label: company.company_name,
@@ -126,8 +117,9 @@ const EditCodingQuestion = (props) => {
       return;
     }
 
+    setSubmitting(true);
     try {
-      const response = await axios.put(`${process.env.REACT_APP_MPOD_BACKEND_URL}update-coding-question/${questionId}`, {
+      const response = await axios.put(apiUrl(`update-coding-question/${questionId}`), {
         problem_name: problemName,
         complexity: selectedComplexity.value,
         time: selectedTime.value,
@@ -143,14 +135,14 @@ const EditCodingQuestion = (props) => {
         navigate(`/coding-questions-list`);
       }
     } catch (error) {
-      console.error("Error updating question:", error);
-      toast.error("Failed to update question", { autoClose: 3000 });
+      toast.error(getErrorMessage(error, "Failed to update question"), { autoClose: 3000 });
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <React.Fragment>
-      <ToastContainer position="top-right" autoClose={5000} transition={Bounce} />
       <Row>
         <Col xl="6">
           <Card>
@@ -238,7 +230,7 @@ const EditCodingQuestion = (props) => {
                 },
               }}/>
 
-              <Button color="primary" className="mt-3" onClick={updateQuestion}>Update</Button>
+              <Button color="primary" className="mt-3" onClick={updateQuestion} disabled={submitting}>Update</Button>
             </CardBody>
           </Card>
         </Col>

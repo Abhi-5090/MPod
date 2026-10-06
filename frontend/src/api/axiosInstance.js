@@ -1,27 +1,56 @@
 import axios from "axios";
 
-const axiosInstance = axios.create({
-    baseURL: process.env.REACT_APP_PUBLIC_BACKEND_URL,
-    withCredentials: true, 
-});
+export const API_BASE = process.env.REACT_APP_PUBLIC_BACKEND_URL; // e.g. https://mpod.ai/backend/api/
+export const IMAGE_BASE = process.env.REACT_APP_PUBLIC_BACKEND_IMAGE_URL; // e.g. https://mpod.ai/backend/
+
+// All requests carry the httpOnly session cookie; nothing sensitive is kept in JS storage.
+const axiosInstance = axios.create({ baseURL: API_BASE, withCredentials: true });
+
+// Pages where a 401 is expected and must not bounce to the student login.
+const NO_REDIRECT_PATHS = ["/login", "/", "/forgot-password", "/home-2", "/kiosk-setup", "/report", "/coding-report"];
 
 axiosInstance.interceptors.response.use(
-    (response) => response,
-    async (error) => {
-        console.log(error.response)
-        if (error.response && error.response.status === 401) {
-            console.log("it is executing")
-        
-            // try {
-            //     await axios.post(`${process.env.REACT_APP_PUBLIC_BACKEND_URL}update-session-token`, {});
-            // } catch (err) {
-            //     console.error("Error clearing session:", err);
-            // }
-            // alert("Session expired. Please login again.");
-            window.location.href = "/login";
-        }
-        return Promise.reject(error);
+  (response) => response,
+  (error) => {
+    const status = error.response && error.response.status;
+    const path = window.location.pathname;
+    if (status === 401 && !error.config?.skipAuthRedirect && !NO_REDIRECT_PATHS.includes(path)) {
+      window.location.href = "/login";
     }
+    return Promise.reject(error);
+  }
 );
+
+export const errorMessage = (err, fallback = "Something went wrong. Please try again.") =>
+  (err && err.response && err.response.data && err.response.data.message) || fallback;
+
+// The per-attempt token is kept in sessionStorage only so the report screen
+// shown on a kiosk right after the interview can load it.
+export const attemptTokenKey = (id) => `mpod_attempt_${id}`;
+export const rememberAttemptToken = (id, token) => {
+  try {
+    sessionStorage.setItem(attemptTokenKey(id), token);
+  } catch (_) {
+    /* storage unavailable */
+  }
+};
+export const attemptTokenFor = (id) => {
+  try {
+    return sessionStorage.getItem(attemptTokenKey(id)) || "";
+  } catch (_) {
+    return "";
+  }
+};
+export const forgetAttemptTokens = () => {
+  try {
+    Object.keys(sessionStorage)
+      .filter((k) => k.startsWith("mpod_attempt_"))
+      .forEach((k) => sessionStorage.removeItem(k));
+  } catch (_) {
+    /* ignore */
+  }
+};
+
+export const profilePicUrl = (rollNo) => `${IMAGE_BASE}profile-pics/${encodeURIComponent(rollNo)}.png`;
 
 export default axiosInstance;

@@ -1,72 +1,62 @@
-import React, { useEffect, useState } from "react";
-import { connect } from "react-redux";
-import axiosInstance from "../../api/axiosInstance";
-import { useNavigate } from "react-router-dom";
-import { setBreadcrumbItems } from "../../store/actions";
-import TotalStats from "./stats/totalStats";
-import TotalSuperAdminStats from "./SuperAdmin/totalSuperAdminStats";
+import React, { useEffect } from "react"
+import PropTypes from "prop-types"
+import { connect } from "react-redux"
+import { Link } from "react-router-dom"
+import { Row, Col } from "reactstrap"
 
-import {
-  Row,
-  Col,
-  Card,
-  CardBody,
-  CardTitle
-} from "reactstrap"
-import axios from "axios"
-const Dashboard = (props) => {
-  const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+import { setBreadcrumbItems } from "../../store/actions"
+import { useAuth } from "../../context/AuthContext"
+import TotalStats from "./stats/totalStats"
+import TotalSuperAdminStats from "./SuperAdmin/totalSuperAdminStats"
 
-  useEffect(() => {
-    fetchCurrentUserData();
-  }, []);
+const breadcrumbItems = [
+  { title: "Mpod", link: "#" },
+  { title: "Dashboard", link: "#" },
+]
 
-  const fetchCurrentUserData = async () => {
-    try {
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-
-      const response = await axios.get(backendUrl + "get-admin-current-user");
-      console.log(response.data);
-      setUser(response.data);
-    } catch (error) {
-      console.log(error);
-      navigate("/login");
-    }
-  };
+const Dashboard = props => {
+  const { user } = useAuth()
+  const { setBreadcrumbItems: setBreadcrumbs } = props
 
   useEffect(() => {
-    if (user && !["tenantadmin", "admin", "superadmin","trainer","placementadmin"].includes(user.role)) {
-      navigate("/login");
-    }
-  }, [user, navigate]);
+    document.title = "Dashboard | Mpod"
+    setBreadcrumbs("Dashboard", breadcrumbItems)
+  }, [setBreadcrumbs])
 
-  document.title = "Dashboard | Mpod";
-
-  const breadcrumbItems = [
-    { title: "Mpod", link: "#" },
-    { title: "Dashboard", link: "#" },
-  ];
-
-  useEffect(() => {
-    props.setBreadcrumbItems("Dashboard", breadcrumbItems);
-  }, []);
+  if (!user) return null
 
   return (
     <React.Fragment>
-      <h2>Welcome! {user && user.organization}</h2>
-      {/* <h4>We will update soon...</h4> */}
-          {user && user.role == "superadmin" ?
+      <div className="d-flex justify-content-between align-items-center flex-wrap mb-3">
+        <h2 className="mb-0">Welcome! {user.organization}</h2>
+        {user.role === "tenantadmin" && user.t_id && (
+          <div>
+            <Link to={`/tenant-credits/${user.t_id}`} className="btn btn-outline-primary me-2">
+              Credit history
+            </Link>
+            <Link to="/kiosk-devices" className="btn btn-outline-secondary">
+              Kiosk devices
+            </Link>
+          </div>
+        )}
+      </div>
+      {user.role === "superadmin" ? (
         <Row>
           <TotalSuperAdminStats />
-        </Row> :
+        </Row>
+      ) : (
         <Row>
           <Col xl="12">
-            <TotalStats tenant={user && user.t_id} />
+            <TotalStats tenant={user.t_id} />
           </Col>
-        </Row>}
+        </Row>
+      )}
     </React.Fragment>
-  );
-};
+  )
+}
 
-export default connect(null, { setBreadcrumbItems })(Dashboard);
+Dashboard.propTypes = {
+  setBreadcrumbItems: PropTypes.func,
+}
+
+export default connect(null, { setBreadcrumbItems })(Dashboard)

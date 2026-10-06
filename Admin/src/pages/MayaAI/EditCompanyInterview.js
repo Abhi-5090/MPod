@@ -6,7 +6,6 @@ import {
   CardBody,
   FormGroup,
   Button,
-  CardTitle,
   InputGroup,
   Input,
   Label,
@@ -18,168 +17,144 @@ import { connect } from "react-redux";
 import { setBreadcrumbItems } from "../../store/actions";
 import axios from "axios";
 import { useParams, useNavigate } from "react-router-dom"
-import "react-datepicker/dist/react-datepicker.css"
+import { toast } from "react-toastify";
+import { apiUrl, getErrorMessage } from "../../config/api";
+import { useAuth } from "../../context/AuthContext";
 
-const EditInterview = (props) => {
-  document.title = "Technial Hub | Edit Interview";
+const roundOptions = [
+  { label: "TR1", value: "TR1" },
+  { label: "TR2", value: "TR2" },
+  { label: "TR3", value: "TR3" },
+  { label: "TR4", value: "TR4" },
+  { label: "MR1", value: "MR1" },
+  { label: "HR1", value: "HR1" },
+];
+const typeOptions = [
+  { label: "Service Based", value: "service_based" },
+  { label: "Product Based", value: "product_based" }
+];
+const platformOptions = [
+  { label: "Web", value: "web" },
+  { label: "MPOD", value: "mpod" },
+];
 
-  const breadcrumbItems = [
-    { title: "TechnicalHub", link: "#" },
-    { title: "Interviews List", link: "/ai-interviews-list" },
-    { title: "Edit Interview", link: "/add-ai-interview" },
-  ];
+const EditCompanyInterview = (props) => {
+  document.title = "Edit Company Interview | Mpod";
 
+  const { user } = useAuth();
   const [data, setData] = useState({});
-
-  const [selectedLevel, setSelectedLevel] = useState(null);
   const [companies, setCompanies] = useState([]);
-
   const [startDate, setStartDate] = useState(null);
   const [rollNo, setRollNo] = useState("");
-  const [interviewDetails, setInterviewDetails] = useState();
-  const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
   const { id } = useParams();
   const navigate = useNavigate();
   const [selectedRound, setSelectedRound] = useState(null);
   const [selectedType, setSelectedType] = useState(null);
-  const [user, setUser] = useState()
   const [selectedCompany, setSelectedCompany] = useState(null);
-  const [selectedPlatform, setSelectedPlatform] = useState();
+  const [selectedPlatform, setSelectedPlatform] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    props.setBreadcrumbItems('Edit Interview', breadcrumbItems);
-    fetchCompanies();
-
+    props.setBreadcrumbItems('Edit Company Interview', [
+      { title: "Mpod", link: "#" },
+      { title: "Company Interviews List", link: "/company-interviews-list" },
+      { title: "Edit Company Interview", link: "#" },
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useEffect(() => {
-    if (id && companies) {
-      fetchDetails();
-    }
-  }, [id, companies]);
-  useEffect(() => {
-    const userDetails = JSON.parse(localStorage.getItem("authUser"))
-    if (userDetails) {
-      setUser(userDetails)
-    }
-  }, [])
-  const fetchDetails = async () => {
-    try {
-      const response = await axios.get(`${backendUrl}get-company-interview-by-id/${id}`);
-      if (response.status === 200) {
-        const interviewDetails = response.data;
-        setInterviewDetails(interviewDetails);
-        setRollNo(interviewDetails.roll_no || "");
-        const company = companies.find(c => interviewDetails.company.includes(c._id));
-        setSelectedCompany(
-          interviewDetails.company.length > 0
-            ? companies
-                .filter(c => interviewDetails.company.includes(c._id))
-                .map(c => ({ label: c.company_name, value: c._id }))
-            : []
-        );
-        
-        setSelectedType(
-          interviewDetails.type.length > 0
-            ? typeOptions.filter(option => interviewDetails.type.includes(option.value))
-            : []
-        );
-        
-        setSelectedRound(
-          interviewDetails.round.length > 0
-            ? roundOptions.filter(option => interviewDetails.round.includes(option.value))
-            : []
-        );
-        setSelectedPlatform(
-          platformOptions.find(option => option.value === interviewDetails.platform) || null
-        );
-        setStartDate(interviewDetails.start_date_time || null);
 
-        setData({ no_of_questions: interviewDetails.questions_count || "" });
-      }
-    } catch (err) {
-      console.log("Error fetching interview details:", err);
-    }
-  };
-  const fetchCompanies = async () => {
+  useEffect(() => {
+    if (id) loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  // Companies list and interview details are loaded together so the selected
+  // companies can be mapped to labels.
+  const loadData = async () => {
+    let companyList = [];
     try {
-      const response = await axios.get(process.env.REACT_APP_MPOD_BACKEND_URL + 'companies-list');
-      if (response.status === 200) {
-        setCompanies(response.data);
-      }
+      const response = await axios.get(apiUrl('companies-list'));
+      companyList = Array.isArray(response.data) ? response.data : [];
+      setCompanies(companyList);
     } catch (error) {
-      console.error("Error fetching companies:", error);
+      toast.error(getErrorMessage(error, "Failed to load companies."));
+    }
+    try {
+      const response = await axios.get(apiUrl(`get-company-interview-by-id/${id}`));
+      const interviewDetails = response.data || {};
+      const company = interviewDetails.company || [];
+      const type = interviewDetails.type || [];
+      const round = interviewDetails.round || [];
+      setRollNo(interviewDetails.roll_no || "");
+      setSelectedCompany(
+        companyList
+          .filter(c => company.includes(c._id))
+          .map(c => ({ label: c.company_name, value: c._id }))
+      );
+      setSelectedType(typeOptions.filter(option => type.includes(option.value)));
+      setSelectedRound(roundOptions.filter(option => round.includes(option.value)));
+      setSelectedPlatform(
+        platformOptions.find(option => option.value === interviewDetails.platform) || null
+      );
+      setStartDate(interviewDetails.start_date_time || null);
+      setData({ no_of_questions: interviewDetails.questions_count || "" });
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to load interview details."));
     }
   };
+
   const companyOptions = companies.map(company => ({
     label: company.company_name,
     value: company._id
   }));
-  const levelOptions = [
-    { label: "Easy", value: "easy" },
-    { label: "Medium", value: "medium" },
-    { label: "Hard", value: "hard" },
-    { label: "Any", value: "any" },
 
-  ];
-  const roundOptions = [
-    { label: "TR1", value: "TR1" },
-    { label: "TR2", value: "TR2" },
-    { label: "TR3", value: "TR3" },
-    { label: "TR4", value: "TR4" },
-    { label: "MR1", value: "MR1" },
-    { label: "HR1", value: "HR1" },
-
-  ];
-  const typeOptions = [
-    { label: "Service Based", value: "service_based" },
-    { label: "Product Based", value: "product_based" }
-  ];
-  const platformOptions = [
-    { label: "Web", value: "web" },
-    { label: "MPOD", value: "mpod" },
-
-  ];
   const handleChange = (e) => {
     setData({ ...data, no_of_questions: e.target.value });
   };
   const handleRollNoChange = (e) => {
-    const { value } = e.target;
-    setRollNo(value);
+    setRollNo(e.target.value);
   };
   const handlePlatformSelect = (selectedplatform) => {
-    console.log(selectedplatform)
     setSelectedPlatform(selectedplatform);
   };
+
   const handleSubmit = async () => {
-    const utcDate = new Date(startDate).toISOString();
+    if (
+      !selectedPlatform ||
+      !rollNo.trim() ||
+      !selectedCompany?.length ||
+      !selectedType?.length ||
+      !selectedRound?.length ||
+      !startDate ||
+      !data.no_of_questions
+    ) {
+      toast.warn("Please fill all required fields");
+      return;
+    }
 
     const dataList = {
       platform: selectedPlatform.value,
-      company: selectedCompany ? selectedCompany.map(item => item.value) : [], // Convert to array of IDs
-      roll_no: rollNo,
-      round: selectedRound ? selectedRound.map(item => item.value) : [], // Convert to array
-      start_date_time: utcDate,
-      type: selectedType ? selectedType.map(item => item.value) : [], // Convert to array
+      company: selectedCompany.map(item => item.value),
+      roll_no: rollNo.trim(),
+      round: selectedRound.map(item => item.value),
+      start_date_time: new Date(startDate).toISOString(),
+      type: selectedType.map(item => item.value),
       questions_count: data.no_of_questions,
-      created_by: user ? user.roll_no : "null"
+      created_by: user.roll_no
     };
-  
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-    
+
+    setIsSaving(true);
     try {
-      const response = await axios.put(`${backendUrl}update-company-interview/${id}`, dataList);
-      
-      if (response.status === 200) {
-        console.log(response.data);
-        alert("Interview updated successfully!");
-        navigate(`/company-interviews-list`);
-      }
+      await axios.put(apiUrl(`update-company-interview/${id}`), dataList);
+      toast.success("Interview updated successfully!");
+      navigate(`/company-interviews-list`);
     } catch (error) {
-      console.error('Error updating interview:', error);
-      alert("Failed to update interview. Please try again.");
+      toast.error(getErrorMessage(error, "Failed to update interview. Please try again."));
+    } finally {
+      setIsSaving(false);
     }
   };
-  
+
   return (
     <React.Fragment>
       <Row>
@@ -288,8 +263,8 @@ const EditInterview = (props) => {
                   </Col>
                 </Row>
 
-                <Button color="primary" type="button" onClick={handleSubmit}>
-                  Update
+                <Button color="primary" type="button" onClick={handleSubmit} disabled={isSaving}>
+                  {isSaving ? "Updating..." : "Update"}
                 </Button>
               </AvForm>
             </CardBody>
@@ -300,4 +275,4 @@ const EditInterview = (props) => {
   );
 };
 
-export default connect(null, { setBreadcrumbItems })(EditInterview);
+export default connect(null, { setBreadcrumbItems })(EditCompanyInterview);

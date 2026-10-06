@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import '../scss/components/section.scss';
 import Header from '../components/header/header.jsx';
-import axios from 'axios';
+import api, { errorMessage } from '../api/axiosInstance';
 import { useNavigate } from 'react-router-dom';
 
 function ResetPassword() {
@@ -13,26 +13,24 @@ function ResetPassword() {
     const [isCorrect, setIsCorrect] = useState(false);
     const [isSent, setIsSent] = useState(false);
 
-    const backendUrl = process.env.REACT_APP_PUBLIC_BACKEND_URL;
 
     const handleOTP = async () => {
         try {
-            const response = await axios.post(`${backendUrl}send-otp`, {
+            const response = await api.post(`send-otp`, {
                 roll_no: rollNo
             });
             if (response.status === 200) {
                 setIsSent(true);
-                alert("OTP sent to your email.");
+                alert(response.data.message || "If this roll number is registered, an OTP has been sent to its email.");
             }
         } catch (error) {
-            console.error(error);
-            alert("Failed to send OTP");
+            alert(errorMessage(error, "Failed to send OTP"));
         }
     };
 
     const handleEnter = async () => {
         try {
-            const response = await axios.post(`${backendUrl}check-otp`, {
+            const response = await api.post(`check-otp`, {
                 roll_no: rollNo,
                 otp
             });
@@ -44,8 +42,7 @@ function ResetPassword() {
                 alert("Invalid OTP");
             }
         } catch (err) {
-            console.error(err);
-            alert("Invalid OTP or server error");
+            alert(errorMessage(err, "Invalid OTP"));
         }
     };
 
@@ -62,8 +59,13 @@ function ResetPassword() {
             return;
         }
 
+        if (newPassword.length < 8) {
+            alert("Password must be at least 8 characters long.");
+            return;
+        }
+
         try {
-            const response = await axios.post(`${backendUrl}reset-password`, {
+            const response = await api.post(`reset-password`, {
                 roll_no: rollNo,
                 otp,
                 new_password: newPassword
@@ -76,8 +78,7 @@ function ResetPassword() {
                 alert(response.data.message || "Reset failed.");
             }
         } catch (err) {
-            console.error(err);
-            alert("Something went wrong!");
+            alert(errorMessage(err, "Something went wrong!"));
         }
     };
 

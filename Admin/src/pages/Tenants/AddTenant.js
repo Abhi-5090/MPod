@@ -1,267 +1,147 @@
-import React, { useEffect, useState } from "react";
-import { Row, Col, Card, CardBody, Button, Label } from "reactstrap";
-import { AvForm, AvField } from "availity-reactstrap-validation";
-import { ToastContainer, toast, Bounce } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
-import { connect } from "react-redux";
-import { setBreadcrumbItems } from "../../store/actions";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react"
+import PropTypes from "prop-types"
+import { Row, Col, Card, CardBody, Button, Label, Input, FormFeedback, Form, Spinner } from "reactstrap"
+import { toast } from "react-toastify"
+import { connect } from "react-redux"
+import { useNavigate } from "react-router-dom"
+import axios from "axios"
 
-const AddTenant = (props) => {
-  const navigate = useNavigate();
-  document.title = "Technical Hub | Add Tenant";
+import { setBreadcrumbItems } from "../../store/actions"
+import { apiUrl, getErrorMessage } from "../../config/api"
 
-  const breadcrumbItems = [
-    { title: "Technical Hub", link: "#" },
-    { title: "Tenants", link: "/tenants-list" },
-    { title: "Add Tenant", link: "/add-tenant" },
-  ];
+const breadcrumbItems = [
+  { title: "Mpod", link: "#" },
+  { title: "Tenants", link: "/tenants-list" },
+  { title: "Add Tenant", link: "/add-tenant" },
+]
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const validate = data => {
+  const errors = {}
+  if (!data.organization_name.trim()) errors.organization_name = "Please enter organization name"
+  if (!data.organization_code.trim()) errors.organization_code = "Please enter organization code"
+  if (!data.contact_person.trim()) errors.contact_person = "Please enter contact person"
+  if (!EMAIL_RE.test(data.email.trim())) errors.email = "Please enter a valid email"
+  if (!/^\d+$/.test(String(data.assigned_credits).trim()))
+    errors.assigned_credits = "Initial credits must be a whole number (0 or more)"
+  const duration = Number(data.interview_duration_minutes)
+  if (!Number.isInteger(duration) || duration <= 0)
+    errors.interview_duration_minutes = "Please enter a duration in minutes"
+  return errors
+}
+
+// POST add-tenant {organization_name, contact_person, email, assigned_credits:<int>,
+//                  status, interview_duration_minutes, organization_code}
+const AddTenant = props => {
+  const navigate = useNavigate()
+  const { setBreadcrumbItems: setBreadcrumbs } = props
+  const [submitting, setSubmitting] = useState(false)
+  const [touched, setTouched] = useState(false)
   const [tenantData, setTenantData] = useState({
     organization_name: "",
+    organization_code: "",
     contact_person: "",
     email: "",
-    assigned_credits: [],
-    interview_duration_minutes: 30,
-    organization_code: "",
-    status: 1,
-  });
-
-  const [authUser, setAuthUser] = useState(null);
+    assigned_credits: "0",
+    interview_duration_minutes: "30",
+    status: "1",
+  })
 
   useEffect(() => {
-    props.setBreadcrumbItems("Add Tenant", breadcrumbItems);
-    fetchCurrentUserData();
-  }, []);
+    document.title = "Add Tenant | Mpod"
+    setBreadcrumbs("Add Tenant", breadcrumbItems)
+  }, [setBreadcrumbs])
 
-  // Fetch authenticated user info
-  const fetchCurrentUserData = async () => {
+  const errors = validate(tenantData)
+  const showError = field => touched && errors[field]
+
+  const handleChange = e => setTenantData({ ...tenantData, [e.target.name]: e.target.value })
+
+  const handleSubmit = async e => {
+    e.preventDefault()
+    setTouched(true)
+    if (Object.keys(errors).length) return
+
+    const payload = {
+      organization_name: tenantData.organization_name.trim(),
+      organization_code: tenantData.organization_code.trim(),
+      contact_person: tenantData.contact_person.trim(),
+      email: tenantData.email.trim(),
+      assigned_credits: parseInt(tenantData.assigned_credits, 10),
+      interview_duration_minutes: parseInt(tenantData.interview_duration_minutes, 10),
+      status: Number(tenantData.status),
+    }
+
+    setSubmitting(true)
     try {
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-      const response = await axios.get(`${backendUrl}get-admin-current-user`);
-      if (response.status === 200) {
-        setAuthUser(response.data);
-      }
+      const response = await axios.post(apiUrl("add-tenant"), payload)
+      toast.success((response.data && response.data.message) || "Tenant added successfully")
+      navigate("/tenants-list")
     } catch (error) {
-      console.error("Error fetching admin user data:", error);
-      toast.error("Unable to fetch current user. Please login again.", {
-        position: "top-right",
-        autoClose: 4000,
-        transition: Bounce,
-      });
-      localStorage.clear();
-      window.location.href = "/admin/login";
+      toast.error(getErrorMessage(error, "Failed to add tenant. Please try again."))
+    } finally {
+      setSubmitting(false)
     }
-  };
+  }
 
-  const handleChange = (e) => {
-    setTenantData({ ...tenantData, [e.target.name]: e.target.value });
-  };
-
-  // Dynamically calculate active credits
-  const getActiveCredits = () => {
-    return tenantData.assigned_credits.reduce((sum, val) => sum + Number(val), 0);
-  };
-
-  const handleSubmit = async () => {
-    if (!authUser) {
-      toast.error("User not authenticated!", {
-        position: "top-right",
-        autoClose: 3000,
-        transition: Bounce,
-      });
-      return;
-    }
-
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-
-    const dataToSend = {
-      ...tenantData,
-      active_credits: getActiveCredits(),
-      created_by: authUser._id,
-    };
-
-    try {
-      const response = await axios.post(`${backendUrl}add-tenant`, dataToSend);
-      if (response.status === 201) {
-        toast.success("Tenant added successfully!", {
-          position: "top-right",
-          autoClose: 3000,
-          transition: Bounce,
-        });
-        setTimeout(() => navigate("/tenants-list"), 2000);
-      }
-    } catch (error) {
-      console.error("Error adding tenant:", error);
-      toast.error(
-        error.response?.data?.message || "Failed to add tenant. Please try again.",
-        {
-          position: "top-right",
-          autoClose: 4000,
-          transition: Bounce,
-        }
-      );
-    }
-  };
+  const field = (name, label, type = "text", placeholder = "", extra = {}) => (
+    <div className="mb-3">
+      <Label htmlFor={name}>{label}</Label>
+      <Input
+        id={name}
+        name={name}
+        type={type}
+        placeholder={placeholder}
+        value={tenantData[name]}
+        onChange={handleChange}
+        invalid={!!showError(name)}
+        {...extra}
+      />
+      <FormFeedback>{errors[name]}</FormFeedback>
+    </div>
+  )
 
   return (
-    <React.Fragment>
-      <ToastContainer />
-      <Row>
-        <Col xl="6">
-          <Card>
-            <CardBody>
-              <h4 className="card-title">Add Tenant</h4>
+    <Row>
+      <Col xl="6">
+        <Card>
+          <CardBody>
+            <h4 className="card-title mb-4">Add Tenant</h4>
+            <Form onSubmit={handleSubmit} noValidate>
+              {field("organization_name", "Organization Name", "text", "Enter organization name")}
+              {field("organization_code", "Organization Code", "text", "Enter organization code")}
+              {field("contact_person", "Contact Person", "text", "Enter contact person name")}
+              {field("email", "Email", "email", "Enter email address")}
+              {field("assigned_credits", "Initial credits", "number", "e.g. 100", { min: 0, step: 1 })}
+              <p className="text-muted small mt-n2">
+                Recorded as the opening balance. Later changes are made from the tenant&apos;s Credits page.
+              </p>
+              {field("interview_duration_minutes", "Interview Duration (minutes)", "number", "e.g. 30", {
+                min: 1,
+                step: 1,
+              })}
+              <div className="mb-3">
+                <Label htmlFor="status">Status</Label>
+                <Input id="status" type="select" name="status" value={tenantData.status} onChange={handleChange}>
+                  <option value="1">Active</option>
+                  <option value="0">Inactive</option>
+                </Input>
+              </div>
+              <Button color="primary" type="submit" disabled={submitting}>
+                {submitting && <Spinner size="sm" className="me-1" />}
+                Submit
+              </Button>
+            </Form>
+          </CardBody>
+        </Card>
+      </Col>
+    </Row>
+  )
+}
 
-              <AvForm className="needs-validation">
-                <Row>
-                  <Col md="12">
-                    <div className="mb-3">
-                      <Label>Organization Name</Label>
-                      <AvField
-                        name="organization_name"
-                        placeholder="Enter organization name"
-                        type="text"
-                        value={tenantData.organization_name}
-                        errorMessage="Please enter organization name"
-                        className="form-control"
-                        validate={{ required: { value: true } }}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  </Col>
+AddTenant.propTypes = {
+  setBreadcrumbItems: PropTypes.func,
+}
 
-                  <Col md="12">
-                    <div className="mb-3">
-                      <Label>Organization Code</Label>
-                      <AvField
-                        name="organization_code"
-                        placeholder="Enter organization code"
-                        type="text"
-                        value={tenantData.organization_code}
-                        errorMessage="Please enter organization code"
-                        className="form-control"
-                        validate={{ required: { value: true } }}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  </Col>
-
-                  <Col md="12">
-                    <div className="mb-3">
-                      <Label>Contact Person</Label>
-                      <AvField
-                        name="contact_person"
-                        placeholder="Enter contact person name"
-                        type="text"
-                        value={tenantData.contact_person}
-                        errorMessage="Please enter contact person"
-                        className="form-control"
-                        validate={{ required: { value: true } }}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  </Col>
-                  
-                  <Col md="12">
-                    <div className="mb-3">
-                      <Label>Email</Label>
-                      <AvField
-                        name="email"
-                        placeholder="Enter email address"
-                        type="email"
-                        value={tenantData.email}
-                        errorMessage="Please enter a valid email"
-                        className="form-control"
-                        validate={{
-                          required: { value: true },
-                          email: { value: true },
-                        }}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  </Col>
-
-                  <Col md="12">
-                    <div className="mb-3">
-                      <Label>Assigned Credits (comma-separated)</Label>
-                      <AvField
-                        name="assigned_credits"
-                        placeholder="Enter assigned credits (e.g. 10,20,30)"
-                        type="text"
-                        value={tenantData.assigned_credits.join(",")}
-                        errorMessage="Please enter assigned credits"
-                        className="form-control"
-                        validate={{ required: { value: true } }}
-                        onChange={(e) =>
-                          setTenantData({
-                            ...tenantData,
-                            assigned_credits: e.target.value
-                              .split(",")
-                              .map((num) => num.trim())
-                              .filter((num) => num !== ""),
-                          })
-                        }
-                      />
-                    </div>
-                  </Col>
-
-                  <Col md="12">
-                    <div className="mb-3">
-                      <Label>Active Credits (auto-calculated)</Label>
-                      <input
-                        type="number"
-                        className="form-control"
-                        value={getActiveCredits()}
-                        disabled
-                      />
-                    </div>
-                  </Col>
-
-                  <Col md="12">
-                    <div className="mb-3">
-                      <Label>Interview Duration (minutes)</Label>
-                      <AvField
-                        name="interview_duration_minutes"
-                        placeholder="Enter interview duration"
-                        type="number"
-                        value={tenantData.interview_duration_minutes}
-                        errorMessage="Please enter interview duration"
-                        className="form-control"
-                        validate={{ required: { value: true } }}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  </Col>
-
-                  <Col md="12">
-                    <div className="mb-3">
-                      <Label>Status</Label>
-                      <AvField
-                        type="select"
-                        name="status"
-                        value={tenantData.status}
-                        className="form-control"
-                        onChange={handleChange}
-                      >
-                        <option value={1}>Active</option>
-                        <option value={0}>Inactive</option>
-                      </AvField>
-                    </div>
-                  </Col>
-                </Row>
-
-                <Button color="primary" type="button" onClick={handleSubmit}>
-                  Submit
-                </Button>
-              </AvForm>
-            </CardBody>
-          </Card>
-        </Col>
-      </Row>
-    </React.Fragment>
-  );
-};
-
-export default connect(null, { setBreadcrumbItems })(AddTenant);
+export default connect(null, { setBreadcrumbItems })(AddTenant)

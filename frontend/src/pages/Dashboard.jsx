@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useCallback } from "react";
-import axiosInstance from "../api/axiosInstance";
+import axiosInstance, { profilePicUrl, errorMessage } from "../api/axiosInstance";
 import Header from "../components/header/header.jsx";
-import Rules from "../components/rules/rules.jsx";
+import InterviewFlow from "../components/interview/InterviewFlow";
 import "../scss/components/section.scss";
 import "./custom.css";
-import { Container, Row, Col, Card, Button, Table, Pagination } from "react-bootstrap";
+import { Row, Col, Card, Table, Pagination } from "react-bootstrap";
 import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
 import "react-circular-progressbar/dist/styles.css";
 import { useNavigate } from 'react-router-dom';
-import axios from "axios";
 const Dashboard = () => {
   const [user, setUser] = useState(null);
   const [imageUrl, setImageUrl] = useState(null);
@@ -26,26 +25,24 @@ const Dashboard = () => {
 
   const navigate = useNavigate();
   const itemsPerPage = 5;
-  const ImageUrl = process.env.REACT_APP_PUBLIC_BACKEND_IMAGE_URL;
   const fiveMin = 5 * 60 * 1000;
 
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = pastInterviews.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(pastInterviews.length / itemsPerPage);
-  const backendUrl=process.env.REACT_APP_PUBLIC_BACKEND_URL
+  const [loadError, setLoadError] = useState("");
   // Fetch user data
   const fetchCurrentUserData = useCallback(async () => {
     try {
       const response = await axiosInstance.get("/get-currentUser");
       const userData = response.data;
       setUser(userData);
-      setImageUrl(`${ImageUrl}profile-pics/${userData.roll_no}.png`);
+      setImageUrl(profilePicUrl(userData.roll_no));
     } catch (error) {
-      console.error("Error fetching user data", error);
       navigate('/login');
     }
-  }, [navigate, ImageUrl]);
+  }, [navigate]);
 
   // Fetch all interview-related data
   const fetchAllInterviewData = useCallback(async (roll_no) => {
@@ -63,10 +60,10 @@ const Dashboard = () => {
       setAttemptedInterviewsCount(attempted.data);
       setPlatformInterviewsCount(platform.data);
       setOverallAccuracies(accuracy.data.accuracyData);
-      console.log(accuracy.data.accuracyData)
       setOverallAccuracy(accuracy.data.overall);
+      setLoadError("");
     } catch (error) {
-      console.error("Error fetching interview data", error);
+      setLoadError(errorMessage(error, "Could not load your interviews. Please refresh."));
     }
   }, []);
   // const shouldRefresh = interviewsData.some((interview) => {
@@ -111,27 +108,31 @@ const Dashboard = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const handleClick = async (id, platform, type) => {
+  const handleClick = async (interview) => {
     try {
-      const data = { type, platform, roll_no: user.roll_no, id };
-      const response = await axios.post(`${backendUrl}get-interview-details-by-id`, data);
-      setDetails(response.data);
+      const data = { type: interview.interview_type, platform: interview.platform, roll_no: user.roll_no, id: interview._id };
+      const response = await axiosInstance.post("get-interview-details-by-id", data);
+      setDetails({ ...response.data, interview_type: interview.interview_type, in_progress: Boolean(interview.in_progress) });
       setRules(true);
     } catch (err) {
-      console.error("Error fetching interview detail", err);
+      setLoadError(errorMessage(err, "Could not open this interview."));
     }
+  };
+
+  const leaveInterview = () => {
+    setRules(false);
+    setDetails(null);
+    if (user) fetchAllInterviewData(user.roll_no);
   };
 
   const handleViewClick = (id, type) => {
     const base = type === "coding" ? "coding-report" : "report";
-    window.location.href = `/${base}?roll_no=${user.roll_no}&interview_type=${type}&id=${id}`;
+    const q = new URLSearchParams({ roll_no: user.roll_no, interview_type: type, id });
+    navigate(`/${base}?${q.toString()}`);
   };
 
   const handleError = () => {
-    const fallback = user?.gender === "male"
-      ? "https://maya.technicalhub.io/assets/icons/boy.png"
-      : "https://maya.technicalhub.io/assets/icons/girl.png";
-    setImageUrl(fallback);
+    setImageUrl(user?.gender === "female" ? "/girl.png" : "/boy.png");
   };
 
   const formatTime = (diff) => {
@@ -153,11 +154,12 @@ const Dashboard = () => {
             alignItems: "center",
             minHeight: "100vh",
             backgroundColor: "#1c1c1c",
-            paddingTop: "20px", paddingLeft: "70px", paddingRight: "70px",
+            paddingTop: "20px", paddingLeft: "16px", paddingRight: "16px",
             color: "#fff",
             marginTop: "100px"
           }}
         >
+          {loadError && <p role="alert" style={{ color: "#ffd166", width: "100%" }}>{loadError}</p>}
           <Row style={{ marginTop: "50px", width: "100%" }}>
             <Col md={3} className="left-section">
               <Card className="profile-card">
@@ -171,7 +173,7 @@ const Dashboard = () => {
                       <p>{user && user.branch}</p>
                     </div>
                     <div className="col-12 col-sm-6 col-md-12 col-lg-6 order-1 order-md-2">
-                      {user && user.roll_no && <img src={imageUrl} alt="Profile" className="profile-pic" style={{ width: "140px" }} onError={handleError} />}
+                      {user && user.roll_no && <img src={imageUrl} alt={user.first_name || "Profile"} className="profile-pic" style={{ width: "140px" }} onError={handleError} />}
                     </div>
 
                   </div>
@@ -264,10 +266,13 @@ const Dashboard = () => {
                         </tr>
                       </thead>
                       <tbody>
+                        {interviewsData.length === 0 && (
+                          <tr><td colSpan={4} style={{ color: "#bbb" }}>No upcoming interviews.</td></tr>
+                        )}
                         {interviewsData.map((interview) => {
                           const startTime = new Date(interview.startDate);
                           const timeDiff = startTime - currentTime;
-                          const isLive = timeDiff <= 0 && timeDiff >= -fiveMin;
+                          const isLive = (timeDiff <= 60 * 1000 && timeDiff >= -fiveMin) || interview.in_progress;
 
                           return (
                             <tr key={interview._id} className="interview-font">
@@ -294,22 +299,24 @@ const Dashboard = () => {
                                           flexDirection: "column",
                                           alignItems: "center",
                                         }}
-                                        onClick={() =>
-                                          handleClick(interview._id, interview.platform, interview.interview_type)
-                                        }
+                                        onClick={() => handleClick(interview)}
                                       >
-                                        Attempt
+                                        {interview.in_progress ? "Resume" : "Attempt"}
                                       </button>
-                                      <span style={{ fontSize: "12px", color: "#fff", marginTop: "2px" }}>
-                                        {formatTime(fiveMin - (currentTime - startTime))}
-                                      </span>
+                                      {!interview.in_progress && (
+                                        <span style={{ fontSize: "12px", color: "#fff", marginTop: "2px" }}>
+                                          {formatTime(Math.max(0, fiveMin - (currentTime - startTime)))}
+                                        </span>
+                                      )}
                                     </>
                                   ) : (
                                     <span style={{ color: "#FFD700", fontFamily: "monospace" }}>
                                       Starts in: {formatTime(timeDiff)}
                                     </span>
                                   )
-                                ) : null}
+                                ) : (
+                                  <span style={{ fontSize: "13px", color: "#bbb" }}>Take this at the mPod kiosk</span>
+                                )}
                               </td>
                             </tr>
                           );
@@ -333,6 +340,9 @@ const Dashboard = () => {
                         </tr>
                       </thead>
                       <tbody>
+                        {currentItems.length === 0 && (
+                          <tr><td colSpan={5} style={{ color: "#bbb" }}>No past interviews yet.</td></tr>
+                        )}
                         {currentItems.map((interview) => (
                           <tr key={interview._id} className="interview-font">
                             <td>{interview.interview_type === "ai generated" ? "TECHNOLOGY" : interview.interview_type.toUpperCase()}</td>
@@ -353,6 +363,11 @@ const Dashboard = () => {
                                 // onClick={() => handleClick(interview._id, interview.platform, interview.interview_type)}
                                 >
                                   {"expired"}
+                                </label>
+                              )}
+                              {["evaluating", "in progress", "evaluation failed"].includes(interview.interview_status) && (
+                                <label style={{ padding: "5px", fontSize: "15px", color: "#fff", background: "rgba(200, 160, 40, 0.25)", borderRadius: "10px" }}>
+                                  {interview.interview_status}
                                 </label>
                               )}
                               {interview.interview_status === "attended" && (
@@ -397,7 +412,7 @@ const Dashboard = () => {
                       ))}
                       <Pagination.Next
                         onClick={() => handlePageChange(currentPage + 1)}
-                        disabled={currentPage === totalPages}
+                        disabled={currentPage >= totalPages}
                       />
                     </Pagination>
 
@@ -408,7 +423,13 @@ const Dashboard = () => {
           </Row>
         </div>
       ) : (
-        <Rules data={details} />
+        <InterviewFlow
+          details={details}
+          startSession={() =>
+            axiosInstance.post("interview-session/start", { interview_id: details._id, interview_type: details.interview_type })
+          }
+          onExit={leaveInterview}
+        />
       )}
     </div>
 

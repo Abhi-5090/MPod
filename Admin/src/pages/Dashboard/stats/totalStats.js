@@ -1,22 +1,25 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import PropTypes from "prop-types";
 import {
   Row,
   Col,
   Card,
   CardBody,
-  Spinner
+  Spinner,
+  Alert,
+  Button
 } from "reactstrap";
-import { connect } from "react-redux";
-import { setBreadcrumbItems } from "../../../store/actions";
-import "react-toastify/dist/ReactToastify.css";
 import "bootstrap/dist/css/bootstrap.min.css";
 import axios from "axios";
 import InterviewComparisonChart from "./interviewComparisonChart";
-const StudentExplore = (props) => {
+import { apiUrl, getErrorMessage } from "../../../config/api";
+
+const asArray = value => (Array.isArray(value) ? value : []);
+
+const TotalStats = (props) => {
   const tid = props.tenant;
 
   const styles = {
-    sectionTitle: { color: "#008738" },
     dashboardContainer: {
       padding: "10px",
       width: "100%",
@@ -58,92 +61,103 @@ const StudentExplore = (props) => {
   const [yesterdayTechStats, setYesterdayTechStats] = useState();
   const [yesterdayAttemptedTechStats, setYesterdayAttemptedTechStats] = useState();
   const [mergedYesterdayTechStats, setMergedYesterdayTechStats] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-
-  const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-
-  useEffect(() => {
+  const fetchStats = useCallback(async () => {
     if (!tid) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const results = await Promise.allSettled([
+        axios.get(apiUrl(`get-users-stats/${tid}`)),
+        axios.get(apiUrl(`get-interview-stats/${tid}`)),
+        axios.get(apiUrl(`get-assigned-interview-stats/${tid}`)),
+        axios.get(apiUrl(`get-platform-stats/${tid}`)),
+        axios.get(apiUrl("get-coding-questions-count")),
+        axios.get(apiUrl("get-company-questions-count")),
+        axios.get(apiUrl(`get-yesterday-assigned-interview-stats/${tid}`)),
+        axios.get(apiUrl(`get-yesterday-attempted-interview-stats/${tid}`)),
+        axios.get(apiUrl(`get-yesterday-tech-stats/${tid}`)),
+        axios.get(apiUrl(`get-yesterday-attempted-tech-stats/${tid}`)),
+      ]);
+      const value = i => (results[i].status === "fulfilled" ? results[i].value.data : undefined);
 
-    const fetchStats = async () => {
-      try {
-        const [
-          userRes,
-          interviewRes,
-          assignedInterviewRes,
-          platformRes,
-          codingRes,
-          companyRes,
-          yesterdayAssignedInterviewRes,
-          yesterdayAttemptedInterviewRes,
-          yesterdayTechRes,
-          yesterdayAttemptedTechRes
+      setUserStats(value(0));
+      setInterviewStats(value(1));
+      setAssignedInterviewStats(value(2));
+      setPlatformStats(value(3));
+      setCodingQuestionsStats(value(4));
+      setCompanyQuestionsStats(value(5));
+      setYesterdayAssignedStats(value(6));
+      setYesterdayAttemptedStats(value(7));
 
-        ] = await Promise.all([
-          axios.get(`${backendUrl}get-users-stats/${tid}`),
-          axios.get(`${backendUrl}get-interview-stats/${tid}`),
-          axios.get(`${backendUrl}get-assigned-interview-stats/${tid}`),
-          axios.get(`${backendUrl}get-platform-stats/${tid}`),
-          axios.get(`${backendUrl}get-coding-questions-count`),
-          axios.get(`${backendUrl}get-company-questions-count`),
-          axios.get(`${backendUrl}get-yesterday-assigned-interview-stats/${tid}`),
-          axios.get(`${backendUrl}get-yesterday-attempted-interview-stats/${tid}`),
-          axios.get(`${backendUrl}get-yesterday-tech-stats/${tid}`),
-          axios.get(`${backendUrl}get-yesterday-attempted-tech-stats/${tid}`)
+      const techStats = value(8);
+      const attemptedTechStats = value(9);
+      setYesterdayTechStats(techStats);
+      setYesterdayAttemptedTechStats(attemptedTechStats);
 
-        ]);
-        console.log(yesterdayTechRes.data)
-        console.log(yesterdayAttemptedTechRes.data)
-        if (userRes.status === 200) setUserStats(userRes.data);
-        if (interviewRes.status === 200) setInterviewStats(interviewRes.data);
-        if (assignedInterviewRes.status === 200) setAssignedInterviewStats(assignedInterviewRes.data)
-        if (platformRes.status === 200) setPlatformStats(platformRes.data);
-        if (codingRes.status === 200) setCodingQuestionsStats(codingRes.data);
-        if (companyRes.status === 200) setCompanyQuestionsStats(companyRes.data);
-        if (yesterdayAssignedInterviewRes.status === 200) setYesterdayAssignedStats(yesterdayAssignedInterviewRes.data);
-        if (yesterdayAttemptedInterviewRes.status === 200) setYesterdayAttemptedStats(yesterdayAttemptedInterviewRes.data);
-        if (yesterdayTechRes.status === 200) setYesterdayTechStats(yesterdayTechRes.data);
-        if (yesterdayAttemptedTechRes.status === 200) setYesterdayAttemptedTechStats(yesterdayAttemptedTechRes.data);
-        const mergedData = yesterdayTechRes.data.technologyWiseCounts.map((assignedItem) => {
-          const attemptedItem = yesterdayAttemptedTechRes.data.technologyWiseCounts.find(
-            (a) => a.technology === assignedItem.technology
-          );
-          return {
-            technology: assignedItem.technology,
-            assigned: assignedItem.count,
-            attempted: attemptedItem ? attemptedItem.count : 0,
-          };
-        });
+      const assignedList = asArray(techStats?.technologyWiseCounts);
+      const attemptedList = asArray(attemptedTechStats?.technologyWiseCounts);
+      const mergedData = assignedList.map((assignedItem) => {
+        const attemptedItem = attemptedList.find((a) => a.technology === assignedItem.technology);
+        return {
+          technology: assignedItem.technology,
+          assigned: assignedItem.count,
+          attempted: attemptedItem ? attemptedItem.count : 0,
+        };
+      });
 
-        // Also include attempted technologies that are not in assigned list
-        yesterdayAttemptedTechRes.data.technologyWiseCounts.forEach((attemptedItem) => {
-          if (!mergedData.find((item) => item.technology === attemptedItem.technology)) {
-            mergedData.push({
-              technology: attemptedItem.technology,
-              assigned: 0,
-              attempted: attemptedItem.count,
-            });
-          }
-        });
-        console.log(mergedData)
-        setMergedYesterdayTechStats(mergedData);
-      } catch (error) {
-        console.error("Failed to fetch stats", error);
-      }
-    };
+      // Also include attempted technologies that are not in assigned list
+      attemptedList.forEach((attemptedItem) => {
+        if (!mergedData.find((item) => item.technology === attemptedItem.technology)) {
+          mergedData.push({
+            technology: attemptedItem.technology,
+            assigned: 0,
+            attempted: attemptedItem.count,
+          });
+        }
+      });
+      setMergedYesterdayTechStats(mergedData);
 
-    fetchStats();
+      const failed = results.find(r => r.status === "rejected");
+      if (failed) setError(getErrorMessage(failed.reason, "Some statistics failed to load."));
+    } finally {
+      setLoading(false);
+    }
   }, [tid]);
 
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  const placeholder = loading ? (
+    <Spinner style={{ width: "1rem", height: "1rem" }} color="warning" />
+  ) : (
+    <span className="text-muted">-</span>
+  );
+
   const renderCount = (value) =>
-    value !== undefined ? (
+    value !== undefined && value !== null ? (
       <h6 style={{ fontSize: "1.2rem", fontWeight: "500" }}>{value}</h6>
     ) : (
-      <Spinner style={{ width: "1rem", height: "1rem" }} color="warning" />
+      placeholder
     );
+
+  // Sum of the given numeric keys of a stats object, or the loading/empty placeholder.
+  const renderTotal = (obj, keys) =>
+    obj ? keys.reduce((sum, key) => sum + (Number(obj[key]) || 0), 0) : placeholder;
 
   return (
     <React.Fragment>
+      {error && (
+        <Alert color="danger" className="d-flex justify-content-between align-items-center mt-4">
+          <span>{error}</span>
+          <Button size="sm" color="danger" outline onClick={fetchStats} disabled={loading}>
+            Retry
+          </Button>
+        </Alert>
+      )}
       <Row className="Programming hoot-dark-test mt-4" style={styles.dashboardContainer}>
         <Row className="mt-2">
           {/* Users */}
@@ -162,7 +176,7 @@ const StudentExplore = (props) => {
                   <Col md={6}>
                     <p style={styles.problemsText}>Users</p>
                     <h6 style={styles.problemsCount}>
-                      {userStats ? userStats.male + userStats.female : <Spinner size="sm" color="warning" />}
+                      {renderTotal(userStats, ["male", "female"])}
                     </h6>
                   </Col>
                 </Row>
@@ -187,9 +201,7 @@ const StudentExplore = (props) => {
                   <Col md={7}>
                     <p style={styles.problemsText}>Attempted Interviews</p>
                     <h6 style={styles.problemsCount}>
-                      {interviewStats
-                        ? interviewStats.technologyInterviews + interviewStats.codingInterviews + interviewStats.companyInterviews
-                        : <Spinner size="sm" color="warning" />}
+                      {renderTotal(interviewStats, ["technologyInterviews", "codingInterviews", "companyInterviews"])}
                     </h6>
                   </Col>
                 </Row>
@@ -213,9 +225,7 @@ const StudentExplore = (props) => {
                   <Col md={6}>
                     <p style={styles.problemsText}>Assigned Interviews</p>
                     <h6 style={styles.problemsCount}>
-                      {assignedInterviewStats
-                        ? assignedInterviewStats.technologyInterviews + assignedInterviewStats.codingInterviews + assignedInterviewStats.companyInterviews
-                        : <Spinner size="sm" color="warning" />}
+                      {renderTotal(assignedInterviewStats, ["technologyInterviews", "codingInterviews", "companyInterviews"])}
                     </h6>
                   </Col>
                 </Row>
@@ -240,9 +250,7 @@ const StudentExplore = (props) => {
                   <Col md={6}>
                     <p style={styles.problemsText}>Platform</p>
                     <h6 style={styles.problemsCount}>
-                      {platformStats
-                        ? platformStats.web + platformStats.mpod
-                        : <Spinner size="sm" color="warning" />}
+                      {renderTotal(platformStats, ["web", "mpod"])}
                     </h6>
                   </Col>
                 </Row>
@@ -269,7 +277,7 @@ const StudentExplore = (props) => {
                   <Col md={6}>
                     <p style={styles.problemsText}>Coding Questions</p>
                     <h6 style={styles.problemsCount}>
-                      {codingQuestionsStats ? codingQuestionsStats.total : <Spinner size="sm" color="warning" />}
+                      {codingQuestionsStats ? codingQuestionsStats.total : placeholder}
                     </h6>
                   </Col>
                 </Row>
@@ -295,7 +303,7 @@ const StudentExplore = (props) => {
                   <Col md={6}>
                     <p style={styles.problemsText}>Company Questions</p>
                     <h6 style={styles.problemsCount}>
-                      {companyQuestionsStats ? companyQuestionsStats.totalCompanies : <Spinner size="sm" color="warning" />}
+                      {companyQuestionsStats ? companyQuestionsStats.totalCompanies : placeholder}
                     </h6>
                   </Col>
                 </Row>
@@ -321,9 +329,7 @@ const StudentExplore = (props) => {
                   <Col md={6}>
                     <p style={styles.problemsText}>Assigned Interviews</p>
                     <h6 style={styles.problemsCount}>
-                      {yesterdayAssignedStats
-                        ? yesterdayAssignedStats.technologyInterviews + yesterdayAssignedStats.codingInterviews + yesterdayAssignedStats.companyInterviews
-                        : <Spinner size="sm" color="warning" />}
+                      {renderTotal(yesterdayAssignedStats, ["technologyInterviews", "codingInterviews", "companyInterviews"])}
                     </h6>
                   </Col>
                 </Row>
@@ -348,9 +354,7 @@ const StudentExplore = (props) => {
                   <Col md={7}>
                     <p style={styles.problemsText}>Attempted Interviews</p>
                     <h6 style={styles.problemsCount}>
-                      {yesterdayAttemptedStats
-                        ? yesterdayAttemptedStats.technologyInterviews + yesterdayAttemptedStats.codingInterviews + yesterdayAttemptedStats.companyInterviews
-                        : <Spinner size="sm" color="warning" />}
+                      {renderTotal(yesterdayAttemptedStats, ["technologyInterviews", "codingInterviews", "companyInterviews"])}
                     </h6>
                   </Col>
                 </Row>
@@ -367,8 +371,10 @@ const StudentExplore = (props) => {
         <Row className="mt-2">
           <Col md="6" sm="12">
             <h5 className="me-5">Yesterday's Technology Interviews Assigned vs Attempted</h5>
-            {mergedYesterdayTechStats.length === 0 ? (
+            {loading ? (
               <Spinner size="sm" color="warning" />
+            ) : mergedYesterdayTechStats.length === 0 ? (
+              <p className="text-muted">No technology interviews yesterday.</p>
             ) : (
               <Row>
                 {mergedYesterdayTechStats.map(({ technology, assigned, attempted }) => (
@@ -400,4 +406,8 @@ const StudentExplore = (props) => {
   );
 };
 
-export default connect(null, { setBreadcrumbItems })(StudentExplore);
+TotalStats.propTypes = {
+  tenant: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+};
+
+export default TotalStats;

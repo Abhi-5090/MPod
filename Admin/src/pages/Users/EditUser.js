@@ -1,435 +1,313 @@
-import React, { useEffect, useState } from "react";
-import {
-  Row,
-  Col,
-  Card,
-  CardBody,
-  Button,
-  Label,
-} from "reactstrap";
-import { AvForm, AvField } from "availity-reactstrap-validation";
+import React, { useCallback, useEffect, useState } from "react";
+import { Row, Col, Card, CardBody, Button, Label, Input, FormGroup, FormFeedback, FormText, Spinner } from "reactstrap";
 import { connect } from "react-redux";
-import { setBreadcrumbItems } from "../../store/actions";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { toast } from "react-toastify";
 import axios from "axios";
-import Switch from "react-switch"
-import { useParams, useNavigate } from "react-router-dom";
-import Select from "react-select";
+import { setBreadcrumbItems } from "../../store/actions";
+import { apiUrl, getErrorMessage } from "../../config/api";
+import { isPlatformRole } from "../../config/roles";
+import { useAuth } from "../../context/AuthContext";
+import LoadState from "../../components/Common/LoadState";
+
+const breadcrumbItems = [
+  { title: "Mpod", link: "#" },
+  { title: "Users", link: "/users-list" },
+  { title: "Edit User", link: "#" },
+];
+
+const ROLE_LABELS = {
+  student: "Student",
+  tenantadmin: "Tenant Admin",
+  placementadmin: "Placement Admin",
+  trainer: "Trainer",
+  admin: "Admin",
+  superadmin: "Super Admin",
+};
+
+const EDITABLE_FIELDS = ["first_name", "mobile", "email", "gender", "college", "branch", "passout_year", "role", "status"];
+
+const emptyForm = {
+  first_name: "",
+  roll_no: "",
+  mobile: "",
+  email: "",
+  gender: "",
+  college: "",
+  branch: "",
+  passout_year: "",
+  role: "student",
+  status: 1,
+  password: "",
+};
+
+const allowedRolesFor = (currentUser) => {
+  if (isPlatformRole(currentUser.role)) {
+    const roles = ["student", "tenantadmin", "placementadmin", "trainer"];
+    if (currentUser.role === "superadmin") roles.push("admin");
+    return roles;
+  }
+  return ["student", "placementadmin", "trainer"];
+};
 
 const EditUser = (props) => {
-  document.title = "Technical Hub | Edit User";
+  document.title = "Edit User | Mpod";
 
-  const breadcrumbItems = [
-    { title: "TechnicalHub", link: "#" },
-    { title: "Users", link: "#" },
-    { title: "Edit User", link: "#" },
-  ];
-  const backendImageUrl = process.env.REACT_APP_BACKEND_IMAGE_URL
-
-  const [data, setData] = useState({});
-  const [statusswitch3, setstatusswitch3] = useState(true);
+  const { setBreadcrumbItems } = props;
+  const { userId } = useParams();
   const navigate = useNavigate();
-  const [technologyData, setTechnologyData] = useState([]);
-  const [file, setFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState("");
-  const [initialGenderValue, setInitialGenderValue] = useState([]);
-  const [initialRoleValue, setInitialRoleValue] = useState([]);
-  const [initialTechnologyValue, setInitialTechnologyValue] = useState([]);
+  const { user: currentUser } = useAuth();
 
-  let user = useParams();
+  const [form, setForm] = useState(emptyForm);
+  const [original, setOriginal] = useState(emptyForm);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [touched, setTouched] = useState(false);
+
   useEffect(() => {
-    props.setBreadcrumbItems('Edit User', breadcrumbItems);
-    fetchData();
-    fetchUserData();
-  }, []);
+    setBreadcrumbItems("Edit User", breadcrumbItems);
+  }, [setBreadcrumbItems]);
 
-  const fetchData = async () => {
-    const backendUrl = process.env.REACT_APP_BACKEND_URL;
+  const fetchUser = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
-      const response = await axios.get(backendUrl + 'get-technologies');
-      if (response.status === 200) {
-        console.log(response.data)
-        setTechnologyData(response.data);
-      }
-    } catch (error) {
-      console.log("Error fetching data:", error);
+      const response = await axios.get(apiUrl(`get-user-by-id/${userId}`));
+      const d = response.data || {};
+      const loaded = {
+        first_name: d.first_name || "",
+        roll_no: d.roll_no || "",
+        mobile: d.mobile != null ? String(d.mobile) : "",
+        email: d.email || "",
+        gender: d.gender || "",
+        college: d.college || "",
+        branch: d.branch || "",
+        passout_year: d.passout_year != null ? String(d.passout_year) : "",
+        role: d.role || "student",
+        status: Number(d.status) === 1 ? 1 : 0,
+        password: "",
+      };
+      setForm(loaded);
+      setOriginal(loaded);
+    } catch (err) {
+      setLoadError(getErrorMessage(err, "Failed to load user."));
+    } finally {
+      setLoading(false);
     }
-  };
-
-  // useEffect(() => {
-  //   if (technologyData.length > 0 && data.technology) {
-  //     initialSelectedGroup = technologyData.filter((ele) => {
-  //       return ele._id == data.technology
-  //     });
-  //     if (initialSelectedGroup.length > 0) {
-  //       initialSelectedGroup.map((ele) => {
-  //         initialTechnologyValue.push({ label: ele.technology_name, value: ele.technology_name })
-  //       })
-  //     }
-
-  //   }
-  // }, [technologyData, data.technology, initialSelectedGroup]);
-
-
-
-  const fetchUserData = async () => {
-    const backendUrl = process.env.REACT_APP_BACKEND_URL;
-    try {
-      const response = await axios.get(backendUrl + "get-user-by-id/" + user.userId);
-      if (response.status === 200) {
-        console.log(response.data)
-        setData(response.data);
-
-        setstatusswitch3(response.data.status);
-      }
-    } catch (error) {
-      console.log("Error fetching user data:", error);
-    }
-  };
-
-  const optionGroup = technologyData.map((ele) => ({
-    options: [
-      { label: ele.technology_name, value: ele._id }
-    ]
-  }));
-
-  const genderOptionGroup = [
-    {
-      options: [
-        { label: "Male", value: "male" },
-        { label: "Female", value: "female" },
-      ]
-    },
-  ]
-
-  const roleOptionGroup = [
-    {
-      options: [
-        { label: "Admin", value: "admin" },
-        { label: "Superadmin", value: "superadmin" },
-        { label: "Manager", value: "manager" },
-        { label: "Trainer", value: "trainer" },
-        { label: "Trainee", value: "trainee" },
-        { label: "Operations", value: "operations" },
-        { label: "Intern", value: "intern" },
-        { label: "Busstaff", value: "busstaff" },
-        { label: "hod", value: "hod" },
-        { label: "faculty", value: "faculty" },
-        { label: "Principal", value: "Principal" },
-      ]
-    },
-  ]
+  }, [userId]);
 
   useEffect(() => {
-    let genderGroup = genderOptionGroup[0].options;
-    let curr_gender = genderGroup.filter((ele) => {
-      return ele.value == data.gender
-    })
-    if (curr_gender && curr_gender.length > 0) {
-      setInitialGenderValue(prevState => [
-        ...prevState,
-        { label: curr_gender[0].label, value: curr_gender[0].value }
-      ]);
-    }
-
-    
-    let roleGroup = roleOptionGroup[0].options;
-    let curr_role = roleGroup.filter((ele) => {
-      return ele.value == data.role
-    })
-    if (curr_role && curr_role.length > 0) {
-      setInitialRoleValue(prevState => [
-        ...prevState,
-        { label: curr_role[0].label, value: curr_role[0].value }
-      ]);
-    }
-
-    console.log(technologyData)
-
-  }, [data.gender, data.role, data.technology])
-
-  useEffect(() => {
-    if (technologyData.length > 0 && data.technology && data.technology.length > 0) {
-      console.log(technologyData)
-      console.log(data.technology)
-      const initialSelectedTechnologies = data.technology.map(techId => {
-        const tech = technologyData.find(techy => techy._id === techId);
-        if (tech) {
-          return { label: tech.technology_name, value: tech._id };
-        }
-        return null;
-      }).filter(tech => tech !== null);
-      console.log(initialSelectedTechnologies)
-
-      setInitialTechnologyValue(initialSelectedTechnologies);
-    }
-  }, [technologyData, data.technology]);
-
-
-
+    fetchUser();
+  }, [fetchUser]);
 
   const handleChange = (e) => {
-    setData({ ...data, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const roleOptions = allowedRolesFor(currentUser);
+  if (original.role && !roleOptions.includes(original.role)) roleOptions.unshift(original.role);
 
-  function handleTechnologySelectGroup(e) {
-    setInitialTechnologyValue(e)
-  } 
+  // Only validate fields the admin changed, so bad legacy data does not block unrelated edits.
+  const changed = (field) => String(form[field]).trim() !== String(original[field]);
+  const errors = {};
+  if (!form.first_name.trim()) errors.first_name = "Name is required.";
+  if (changed("email") && form.email && !/^\S+@\S+\.\S+$/.test(form.email.trim())) errors.email = "Enter a valid email.";
+  if (changed("mobile") && form.mobile && !/^\+?\d{7,15}$/.test(form.mobile.replace(/[\s-]/g, ""))) errors.mobile = "Enter a valid mobile number.";
+  if (changed("passout_year") && form.passout_year && !/^\d{4}$/.test(String(form.passout_year).trim()))
+    errors.passout_year = "Enter a 4-digit year.";
+  if (form.password && form.password.length < 8) errors.password = "Password must be at least 8 characters.";
+  const hasErrors = Object.keys(errors).length > 0;
+  const showError = (field) => touched && !!errors[field];
 
-  function handleRoleSelectGroup(e) {
-    setInitialRoleValue(e)
-  }
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setTouched(true);
+    if (hasErrors) return;
 
-  function handleGenderSelectGroup(e) {
-    setInitialGenderValue(e)
-  }
-
- 
-
-  const handleStatusSwitchChange = (e) => {
-    setstatusswitch3(!statusswitch3)
-    const newStatus = !statusswitch3 ? 1 : 0;
-    setData({ ...data, status: newStatus })
-  }
-
- 
-
-  const handleFileChange = (event) => {
-    setFile(event.target.files[0]);
-    const fileReader = new FileReader();
-    fileReader.onload = () => {
-      setPreviewUrl(fileReader.result);
-    };
-    fileReader.readAsDataURL(event.target.files[0]);
-  };
-  const updateUser = async () => {
-    const newStatus = statusswitch3 ? 1 : 0;
-    const formData = new FormData();
-    const initialTechnologyValueArray = initialTechnologyValue.map(ele=>ele.value)
-    formData.append('file', file);
-    formData.append('first_name', data.first_name);
-    formData.append('roll_no', data.roll_no);
-    formData.append('gender', typeof(initialGenderValue.value)=='undefined'?data.gender:initialGenderValue.value);
-    formData.append('mobile', data.mobile);
-    formData.append('email', data.email);
-    formData.append('section', data.section);
-    formData.append('role', typeof(initialRoleValue.value)=='undefined'?data.role:initialRoleValue.value);
-    formData.append('technology', initialTechnologyValueArray);
-    formData.append('profile_pic', data.profile_pic);
-    formData.append('status', newStatus)
-    const backendUrl = process.env.REACT_APP_BACKEND_URL;
-    try {
-      const response = await axios.post(backendUrl + 'update-user/' + user.userId, formData);
-      if (response.status === 200) {
-        navigate(`/users-list`);
-        alert("Success");
-      }
-    } catch (error) {
-      console.error('Error updating user:', error);
+    // Only send fields that actually changed, so untouched legacy values are not re-validated/overwritten.
+    const body = {};
+    EDITABLE_FIELDS.forEach((field) => {
+      const value = typeof form[field] === "string" ? form[field].trim() : form[field];
+      if (String(value) !== String(original[field])) body[field] = value;
+    });
+    if ("status" in body) body.status = Number(body.status);
+    if (body.passout_year) body.passout_year = Number(body.passout_year);
+    if (form.password) body.password = form.password;
+    if (!Object.keys(body).length) {
+      toast.info("No changes to save.");
+      return;
     }
-  };
 
-
-  const Offsymbol = (props) => {
-    return (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100%",
-          fontSize: 12,
-          color: "#fff",
-          paddingRight: 2
-        }}
-      >
-        No
-      </div>
-    );
-  };
-
-  const OnSymbol = () => {
-    return (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100%",
-          fontSize: 12,
-          color: "#fff",
-          paddingRight: 2
-        }}
-      >
-        Yes
-      </div>
-    );
+    setSaving(true);
+    try {
+      const response = await axios.put(apiUrl(`update-user/${userId}`), body);
+      toast.success((response.data && response.data.message) || "User updated successfully.");
+      navigate("/users-list");
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to update user."));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <React.Fragment>
       <Row>
-        <Col xl="6">
+        <Col xl="8">
           <Card>
             <CardBody>
-              <h4 className="card-title">EDIT User</h4>
-              <AvForm className="needs-validation">
-                <Row>
-                  <Col md="6">
-                    <div className="mb-3">
-
-                      <div className="mb-3">
-                        <label className="form-lable">Default file input</label><br />
-                        {previewUrl && <img src={previewUrl} alt="User Icon" width="50px" />}
-                        {!previewUrl && data.profile_pic && <img src={backendImageUrl + "profile-pics/" + data.profile_pic} alt="Profile pic" width="50px" />}
-
-                        <input type="file" className="form-control form-control-file" data-buttonname="btn-secondary" onChange={handleFileChange} />
-                      </div>
-
-                    </div>
-                  </Col>
-                </Row>
-                <Row>
-                  <Col md="6">
-                    <div className="mb-3">
-                      <Label htmlFor="nameValidation">Name</Label>
-                      <AvField
-                        name="first_name"
-                        placeholder="Name"
-                        type="text"
-                        errorMessage="Enter your Name"
-                        className="form-control"
-                        validate={{ required: { value: true } }}
-                        id="nameValidation"
-                        onChange={handleChange}
-                        value={data.first_name}
-                      />
-                    </div>
-                  </Col>
-                  <Col md="6">
-                    <div className="mb-3">
-                      <Label htmlFor="rollValidation">Roll No</Label>
-                      <AvField
-                        name="roll_no"
-                        placeholder="Roll no/Emp Id"
-                        type="text"
-                        errorMessage="Enter Roll no/Emp Id"
-                        className="form-control"
-                        validate={{ required: { value: true } }}
-                        id="rollValidation"
-                        onChange={handleChange}
-                        value={data.roll_no}
-                      />
-                    </div>
-                  </Col>
-                </Row>
-                <Row>
-                  <Col md="6">
-                    <div className="mb-3">
-                      <Label>Select Gender</Label>
-                      <Select
-                        onChange={handleGenderSelectGroup}
-                        options={genderOptionGroup}
-                        classNamePrefix="select2-selection"
-                        value={initialGenderValue}
-                      />
-                    </div>
-                  </Col>
-                  <Col md="6">
-                    <div className="mb-3">
-                      <Label>Select technology</Label>
-                      <Select
-                        onChange={handleTechnologySelectGroup}
-                        options={optionGroup}
-                        isMulti={true}
-                        value={initialTechnologyValue}
-                        classNamePrefix="select2-selection"
-                      />
-                    </div>
-                  </Col>
-
-                </Row>
-                <Row>
-                  <Col md="6">
-                    <div className="mb-3">
-                      <Label htmlFor="mobileValidation">Mobile</Label>
-                      <AvField
-                        name="mobile"
-                        placeholder="Mobile"
-                        type="text"
-                        errorMessage="Enter mobile number"
-                        className="form-control"
-                        validate={{ required: { value: true } }}
-                        id="mobileValidation"
-                        onChange={handleChange}
-                        value={data.mobile}
-
-                      />
-                    </div>
-                  </Col>
-                  <Col md="6">
-                    <div className="mb-3">
-                      <Label htmlFor="emailValidation">Email</Label>
-                      <AvField
-                        name="email"
-                        placeholder="your email"
-                        type="text"
-                        errorMessage="Enter Email"
-                        className="form-control"
-                        validate={{ required: { value: true } }}
-                        id="emailValidation"
-                        onChange={handleChange}
-                        value={data.email}
-
-                      />
-                    </div>
-                  </Col>
-                </Row>
-                <Row>
-                  <Col md="6">
-                    <div className="mb-3">
-                      <Label>User role</Label>
-                      <Select
-                        onChange={handleRoleSelectGroup}
-                        options={roleOptionGroup}
-                        classNamePrefix="select2-selection"
-                        value={initialRoleValue}
-                      />
-                    </div>
+              <h4 className="card-title mb-4">Edit User</h4>
+              <LoadState loading={loading} error={loadError} onRetry={fetchUser}>
+                <form onSubmit={handleSubmit} noValidate>
+                  <Row>
                     <Col md="6">
-                    <div className="mb-3">
-          <Label htmlFor="sectionValidation">section</Label>
-                      <AvField
-                        name="section"
-                        placeholder="section"
-                        type="text"
-                        errorMessage="Enter your section"
-                        className="form-control"
-                        validate={{ required: { value: true } }}
-                        id="nameValidation"
-                        onChange={handleChange}
-                        value={data.section}
-                      />
-                    </div>
-                  </Col>
-                  </Col>
-                  <Col style={{ margin: "auto 0", paddingTop: "20px" }} md="6">
-                    <div className="mb-3">
-                      <Label htmlFor="validationCustom01">Status</Label>&nbsp;&nbsp;&nbsp;&nbsp;
-                      <Switch
-                        uncheckedIcon={<Offsymbol />}
-                        checkedIcon={<OnSymbol />}
-                        onColor="#02a499"
-                        onChange={handleStatusSwitchChange}
-                        checked={statusswitch3}
-                      />
-                    </div>
-                  </Col>
-                </Row>
-                <Button color="primary" type="button" onClick={updateUser}>
-                  Submit
-                </Button>
-              </AvForm>
+                      <FormGroup>
+                        <Label for="first_name">Name</Label>
+                        <Input
+                          id="first_name"
+                          name="first_name"
+                          value={form.first_name}
+                          onChange={handleChange}
+                          invalid={showError("first_name")}
+                        />
+                        <FormFeedback>{errors.first_name}</FormFeedback>
+                      </FormGroup>
+                    </Col>
+                    <Col md="6">
+                      <FormGroup>
+                        <Label for="roll_no">Roll No</Label>
+                        <Input id="roll_no" name="roll_no" value={form.roll_no} readOnly disabled />
+                      </FormGroup>
+                    </Col>
+                  </Row>
+                  <Row>
+                    <Col md="6">
+                      <FormGroup>
+                        <Label for="mobile">Mobile</Label>
+                        <Input
+                          id="mobile"
+                          name="mobile"
+                          type="tel"
+                          value={form.mobile}
+                          onChange={handleChange}
+                          invalid={showError("mobile")}
+                        />
+                        <FormFeedback>{errors.mobile}</FormFeedback>
+                      </FormGroup>
+                    </Col>
+                    <Col md="6">
+                      <FormGroup>
+                        <Label for="email">Email</Label>
+                        <Input
+                          id="email"
+                          name="email"
+                          type="email"
+                          value={form.email}
+                          onChange={handleChange}
+                          invalid={showError("email")}
+                        />
+                        <FormFeedback>{errors.email}</FormFeedback>
+                      </FormGroup>
+                    </Col>
+                  </Row>
+                  <Row>
+                    <Col md="6">
+                      <FormGroup>
+                        <Label for="gender">Gender</Label>
+                        <Input id="gender" name="gender" type="select" value={form.gender} onChange={handleChange}>
+                          <option value="">Select gender</option>
+                          <option value="male">Male</option>
+                          <option value="female">Female</option>
+                          <option value="other">Other</option>
+                          {form.gender && !["male", "female", "other"].includes(form.gender) && (
+                            <option value={form.gender}>{form.gender}</option>
+                          )}
+                        </Input>
+                      </FormGroup>
+                    </Col>
+                    <Col md="6">
+                      <FormGroup>
+                        <Label for="passout_year">Passout Year</Label>
+                        <Input
+                          id="passout_year"
+                          name="passout_year"
+                          type="number"
+                          value={form.passout_year}
+                          onChange={handleChange}
+                          invalid={showError("passout_year")}
+                        />
+                        <FormFeedback>{errors.passout_year}</FormFeedback>
+                      </FormGroup>
+                    </Col>
+                  </Row>
+                  <Row>
+                    <Col md="6">
+                      <FormGroup>
+                        <Label for="college">College</Label>
+                        <Input id="college" name="college" value={form.college} onChange={handleChange} />
+                      </FormGroup>
+                    </Col>
+                    <Col md="6">
+                      <FormGroup>
+                        <Label for="branch">Branch</Label>
+                        <Input id="branch" name="branch" value={form.branch} onChange={handleChange} />
+                      </FormGroup>
+                    </Col>
+                  </Row>
+                  <Row>
+                    <Col md="6">
+                      <FormGroup>
+                        <Label for="role">Role</Label>
+                        <Input id="role" name="role" type="select" value={form.role} onChange={handleChange}>
+                          {roleOptions.map((r) => (
+                            <option key={r} value={r}>
+                              {ROLE_LABELS[r] || r}
+                            </option>
+                          ))}
+                        </Input>
+                      </FormGroup>
+                    </Col>
+                    <Col md="6">
+                      <FormGroup>
+                        <Label for="status">Status</Label>
+                        <Input id="status" name="status" type="select" value={form.status} onChange={handleChange}>
+                          <option value={1}>Active</option>
+                          <option value={0}>Inactive</option>
+                        </Input>
+                      </FormGroup>
+                    </Col>
+                  </Row>
+                  <Row>
+                    <Col md="6">
+                      <FormGroup>
+                        <Label for="password">New Password</Label>
+                        <Input
+                          id="password"
+                          name="password"
+                          type="password"
+                          autoComplete="new-password"
+                          value={form.password}
+                          onChange={handleChange}
+                          invalid={showError("password")}
+                        />
+                        <FormFeedback>{errors.password}</FormFeedback>
+                        <FormText>Leave blank to keep the current password. Minimum 8 characters.</FormText>
+                      </FormGroup>
+                    </Col>
+                  </Row>
+                  <div className="d-flex gap-2">
+                    <Button color="primary" type="submit" disabled={saving}>
+                      {saving && <Spinner size="sm" className="me-1" />}
+                      {saving ? "Saving..." : "Save"}
+                    </Button>
+                    <Link to="/users-list" className="btn btn-light">
+                      Cancel
+                    </Link>
+                  </div>
+                </form>
+              </LoadState>
             </CardBody>
           </Card>
         </Col>
@@ -439,5 +317,3 @@ const EditUser = (props) => {
 };
 
 export default connect(null, { setBreadcrumbItems })(EditUser);
-
-

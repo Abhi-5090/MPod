@@ -6,7 +6,6 @@ import {
   CardBody,
   FormGroup,
   Button,
-  CardTitle,
   InputGroup,
   Input,
   Label,
@@ -18,148 +17,138 @@ import { connect } from "react-redux";
 import { setBreadcrumbItems } from "../../store/actions";
 import axios from "axios";
 import { useParams, useNavigate } from "react-router-dom"
-import "react-datepicker/dist/react-datepicker.css"
+import { toast } from "react-toastify";
+import { apiUrl, getErrorMessage } from "../../config/api";
+import { useAuth } from "../../context/AuthContext";
+
+const levelOptions = [
+  { label: "Easy", value: "easy" },
+  { label: "Medium", value: "medium" },
+  { label: "Hard", value: "hard" },
+  { label: "Any", value: "any" },
+];
+const platformOptions = [
+  { label: "Web", value: "web" },
+  { label: "MPOD", value: "mpod" },
+];
 
 const EditInterview = (props) => {
-  document.title = "Technial Hub | Edit Interview";
+  document.title = "Edit Interview | Mpod";
 
-  const breadcrumbItems = [
-    { title: "TechnicalHub", link: "#" },
-    { title: "Interviews List", link: "/ai-interviews-list" },
-    { title: "Edit Interview", link: "/add-ai-interview" },
-  ];
-
+  const { user } = useAuth();
   const [data, setData] = useState({});
-  const [selectedGroup, setselectedGroup] = useState(null)
   const [selectedTechnologyGroup, setselectedTechnologyGroup] = useState(null)
   const [selectedModuleGroup, setselectedModuleGroup] = useState(null)
   const [selectedTopicGroup, setselectedTopicGroup] = useState(null)
   const [selectedLevel, setSelectedLevel] = useState(null);
-  const [courseData, setCourseData] = useState([])
   const [technologyData, setTechnologyData] = useState([])
   const [topicData, setTopicData] = useState([])
   const [moduleData, setModuleData] = useState([])
   const [startDate, setStartDate] = useState(null);
   const [rollNo, setRollNo] = useState("");
-  const [interviewDetails, setInterviewDetails] = useState();
-  const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
+  const [selectedPlatform, setSelectedPlatform] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
   const { id } = useParams();
   const navigate = useNavigate();
-  const [selectedPlatform, setSelectedPlatform] = useState();
-  const [user, setUser] = useState()
 
   useEffect(() => {
-    props.setBreadcrumbItems('Edit Interview', breadcrumbItems);
-
+    props.setBreadcrumbItems('Edit Interview', [
+      { title: "Mpod", link: "#" },
+      { title: "Interviews List", link: "/ai-interviews-list" },
+      { title: "Edit Interview", link: "#" },
+    ]);
     fetchTechnologyData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    if (selectedTechnologyGroup) {
-      fetchModuleData()
+  useEffect(() => {
+    if (selectedTechnologyGroup) fetchModuleData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTechnologyGroup]);
 
-    }
-    if (selectedModuleGroup) {
+  useEffect(() => {
+    if (selectedModuleGroup && selectedModuleGroup.length) {
       fetchTopicsData()
+    } else {
+      setTopicData([])
     }
-  }, [selectedTechnologyGroup, selectedModuleGroup]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedModuleGroup]);
+
   useEffect(() => {
     if (id) {
       fetchDetails();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
-  useEffect(() => {
-    const userDetails = JSON.parse(localStorage.getItem('authUser'))
-    if (userDetails) {
-      setUser(userDetails)
-    }
-  }, [])
+
   const fetchDetails = async () => {
     try {
-      const response = await axios.get(`${backendUrl}get-interviewee-details/${id}`);
-      if (response.status === 200) {
-        const interviewDetails = response.data;
-        setInterviewDetails(interviewDetails);
-        setRollNo(interviewDetails.roll_no || "");
+      const response = await axios.get(apiUrl(`get-interviewee-details/${id}`));
+      const interviewDetails = response.data || {};
+      setRollNo(interviewDetails.roll_no || "");
 
-        setselectedTechnologyGroup({
-          label: interviewDetails.technology_name,
-          value: interviewDetails.technology
-        });
+      setselectedTechnologyGroup({
+        label: interviewDetails.technology_name,
+        value: interviewDetails.technology
+      });
 
-        if (interviewDetails.module && interviewDetails.module_name) {
-          const selectedModules = interviewDetails.module.map((moduleId, index) => ({
-            label: interviewDetails.module_name[index],
-            value: moduleId
-          }));
-          setselectedModuleGroup(selectedModules);
-        }
-
-        if (interviewDetails.topic && interviewDetails.topic_name) {
-          const selectedTopics = interviewDetails.topic.map((topicId, index) => ({
-            label: interviewDetails.topic_name[index],
-            value: topicId
-          }));
-          setselectedTopicGroup(selectedTopics);
-        }
-
-        setSelectedLevel(
-          levelOptions.find(option => option.value === interviewDetails.level) || null
-        );
-        setSelectedPlatform(
-          platformOptions.find(option => option.value === interviewDetails.platform) || null
-        );
-        setStartDate(interviewDetails.start_date_time || null);
-
-        setData({ no_of_questions: interviewDetails.questions_count || "" });
+      if (interviewDetails.module && interviewDetails.module_name) {
+        setselectedModuleGroup(interviewDetails.module.map((moduleId, index) => ({
+          label: interviewDetails.module_name[index],
+          value: moduleId
+        })));
       }
+
+      if (interviewDetails.topic && interviewDetails.topic_name) {
+        setselectedTopicGroup(interviewDetails.topic.map((topicId, index) => ({
+          label: interviewDetails.topic_name[index],
+          value: topicId
+        })));
+      }
+
+      setSelectedLevel(
+        levelOptions.find(option => option.value === interviewDetails.level) || null
+      );
+      setSelectedPlatform(
+        platformOptions.find(option => option.value === interviewDetails.platform) || null
+      );
+      setStartDate(interviewDetails.start_date_time || null);
+
+      setData({ no_of_questions: interviewDetails.questions_count || "" });
     } catch (err) {
-      console.log("Error fetching interview details:", err);
+      toast.error(getErrorMessage(err, "Failed to load interview details."));
     }
   };
 
   const fetchTechnologyData = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
     try {
-      const response = await axios.get(backendUrl + 'get-technologies');
-      if (response.status === 200) {
-        setTechnologyData(response.data);
-      }
+      const response = await axios.get(apiUrl('get-technologies'));
+      setTechnologyData(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
-      console.log("Error fetching data:", error);
+      toast.error(getErrorMessage(error, "Failed to load technologies."));
     }
   };
 
   const fetchModuleData = async () => {
-    if (typeof (selectedTechnologyGroup) != 'undefined') {
-
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-      try {
-        const response = await axios.post(backendUrl + 'get-modules-by-technology', { technology_id: selectedTechnologyGroup.value });
-        if (response.status === 200) {
-          setModuleData(response.data);
-        }
-      } catch (error) {
-        console.log("Error fetching data:", error);
-      }
-    };
+    try {
+      const response = await axios.post(apiUrl('get-modules-by-technology'), { technology_id: selectedTechnologyGroup.value });
+      setModuleData(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to load modules."));
+    }
   }
+
   const fetchTopicsData = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
     try {
       const moduleIds = selectedModuleGroup.map(group => group.value);
-      const response = await axios.post(backendUrl + 'get-topics-by-multi-modules', { module_ids: moduleIds });
-      if (response.status === 200) {
-        setTopicData(response.data);
-      }
+      const response = await axios.post(apiUrl('get-topics-by-multi-modules'), { module_ids: moduleIds });
+      setTopicData(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
-      console.log("Error fetching data:", error);
+      toast.error(getErrorMessage(error, "Failed to load topics."));
     }
   };
 
-  const optionGroup = courseData.map((ele) => ({
-    options: [
-      { label: ele.course_name, value: ele._id }
-    ]
-  }));
   const technologyOptionGroup = technologyData.map((ele) => ({
     options: [
       { label: ele.technology_name, value: ele._id }
@@ -176,40 +165,30 @@ const EditInterview = (props) => {
       { label: ele.topic_name, value: ele._id }
     ]
   }));
-  const levelOptions = [
-    { label: "Easy", value: "easy" },
-    { label: "Medium", value: "medium" },
-    { label: "Hard", value: "hard" },
-    { label: "Any", value: "any" },
 
-  ];
-  const platformOptions = [
-    { label: "Web", value: "web" },
-    { label: "MPOD", value: "mpod" },
-
-  ];
   const handleChange = (e) => {
     setData({ ...data, no_of_questions: e.target.value });
   };
   const handleRollNoChange = (e) => {
-    const { value } = e.target;
-    setRollNo(value);
+    setRollNo(e.target.value);
   };
 
   const handlePlatformSelect = (selectedplatform) => {
-    console.log(selectedplatform)
     setSelectedPlatform(selectedplatform);
   };
 
   function handleTechnologySelectGroup(selectedGroup) {
     setselectedTechnologyGroup(selectedGroup)
+    // Modules/topics belong to the previous technology
+    setselectedModuleGroup(null)
+    setselectedTopicGroup(null)
+    setModuleData([])
   }
   function handleSelectModuleGroup(selectedGroup) {
     setselectedModuleGroup(selectedGroup)
   }
 
   function handleTopicGroup(selectedGroup) {
-    console.log(selectedGroup)
     setselectedTopicGroup(selectedGroup)
   }
 
@@ -218,29 +197,39 @@ const EditInterview = (props) => {
   };
 
   const handleSubmit = async () => {
-    const utcDate = new Date(startDate).toISOString();
+    if (
+      !selectedPlatform ||
+      !rollNo ||
+      !selectedTechnologyGroup ||
+      !selectedModuleGroup?.length ||
+      !selectedTopicGroup?.length ||
+      !selectedLevel ||
+      !data.no_of_questions ||
+      !startDate
+    ) {
+      toast.warn("Please fill all required fields");
+      return;
+    }
     const dataList = {
       'platform': selectedPlatform.value,
-      'roll_no': rollNo,
+      'roll_no': rollNo.trim(),
       'technology': selectedTechnologyGroup.value,
       'module': selectedModuleGroup.map(group => group.value),
       'topic': selectedTopicGroup.map(group => group.value),
-      'start_date_time': utcDate,
+      'start_date_time': new Date(startDate).toISOString(),
       'level': selectedLevel.value,
       "questions_count": data.no_of_questions,
-      "created_by": user ? user.roll_no : "null"
-
+      "created_by": user.roll_no
     }
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
+    setIsSaving(true);
     try {
-      const response = await axios.put(backendUrl + 'edit-interviewee-details/' + id, dataList);
-      if (response.status == 200) {
-        console.log(response.data);
-        alert("success");
-        navigate(`/ai-interviews-list`)
-      }
+      await axios.put(apiUrl('edit-interviewee-details/' + id), dataList);
+      toast.success("Interview updated successfully!");
+      navigate(`/ai-interviews-list`)
     } catch (error) {
-      console.error('Error adding data:', error);
+      toast.error(getErrorMessage(error, "Failed to update interview."));
+    } finally {
+      setIsSaving(false);
     }
   };
   return (
@@ -249,7 +238,7 @@ const EditInterview = (props) => {
         <Col xl="6">
           <Card>
             <CardBody>
-              <h4 className="card-title">Add Interview</h4>
+              <h4 className="card-title">Edit Interview</h4>
 
               <AvForm className="needs-validation">
                 <Row>
@@ -302,7 +291,6 @@ const EditInterview = (props) => {
                         onChange={handleSelectModuleGroup}
                         options={optionModuleGroup}
                         classNamePrefix="select2-selection"
-                      // name="module"
                       />
                     </div>
                   </Col>
@@ -382,8 +370,8 @@ const EditInterview = (props) => {
                   </Col>
                 </Row>
 
-                <Button color="primary" type="button" onClick={handleSubmit}>
-                  Update
+                <Button color="primary" type="button" onClick={handleSubmit} disabled={isSaving}>
+                  {isSaving ? "Updating..." : "Update"}
                 </Button>
               </AvForm>
             </CardBody>

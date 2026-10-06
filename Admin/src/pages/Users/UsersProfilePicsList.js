@@ -1,214 +1,223 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { MDBDataTable } from "mdbreact";
-import { Row, Col, Card, CardBody, CardTitle, Button, Badge } from "reactstrap";
-import { MutatingDots } from "react-loader-spinner";
-import { ToastContainer, toast, Bounce } from "react-toastify";
-import { Link, useNavigate } from "react-router-dom";
-import "react-toastify/dist/ReactToastify.css";
+import { Row, Col, Card, CardBody, CardTitle, Button, Badge, Input, Label, Spinner } from "reactstrap";
+import { connect } from "react-redux";
+import { Link } from "react-router-dom";
+import { toast } from "react-toastify";
 import axios from "axios";
+import { setBreadcrumbItems } from "../../store/actions";
+import { apiUrl, IMAGE_BASE, getErrorMessage } from "../../config/api";
+import LoadState from "../../components/Common/LoadState";
+import ConfirmModal from "../../components/Common/ConfirmModal";
+import useTenantUsers from "./useTenantUsers";
 import "./datatables.scss";
-import DeleteConfirmationModal from "./DeleteConfirmationModal";
-import axiosInstance from "../../api/axiosInstance";
 
-const UsersList = (props) => {
-  document.title = "Users list | Technical Hub - All the list of Users";
+const breadcrumbItems = [
+  { title: "Mpod", link: "#" },
+  { title: "Users", link: "/users-list" },
+  { title: "Profile Pictures", link: "#" },
+];
 
-  const [userData, setUserData] = useState([]);
-  const [loading, setLoading] = useState(true);
+const UsersProfilePicsList = (props) => {
+  document.title = "Users Profile Pictures | Mpod";
+
+  const { setBreadcrumbItems } = props;
+  const { isPlatform, tenants, tenantId, setTenantId, tenantName, users, setUsers, loading, error, reload } =
+    useTenantUsers();
   const [zipFile, setZipFile] = useState(null);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [userToDelete, setUserToDelete] = useState(null);
-  const [user, setUser] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [userToDeactivate, setUserToDeactivate] = useState(null);
+  const [busy, setBusy] = useState(false);
+  // Bumped after an upload so <img> tags bypass the browser cache.
+  const [imageVersion, setImageVersion] = useState(0);
+  const fileInputRef = useRef(null);
 
-  const backendUrl = process.env.REACT_APP_BACKEND_URL;
-  const backendImageUrl = process.env.REACT_APP_BACKEND_IMAGE_URL;
-  const mpodBackendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-  const navigate = useNavigate()
-  console.log(mpodBackendUrl)
   useEffect(() => {
-    if (user && ["tenantadmin","admin", "super admin"].includes(user.role)) {
-      console.log("hello")
-    fetchUsers();
-    }
-  }, [user]);
+    setBreadcrumbItems("Profile Pictures", breadcrumbItems);
+  }, [setBreadcrumbItems]);
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      const response = await axios.get(`${mpodBackendUrl}get-users/${user.t_id}`);
-      setUserData(response.data);
-    } catch (error) {
-      console.error("Error fetching users:", error);
-    }
-    setLoading(false);
-  };
-  useEffect(() => {
-    fetchCurrentUserData();
-  }, []); 
-
-  const fetchCurrentUserData = async () => {
-    try {
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-
-      const response = await axios.get(backendUrl+"get-admin-current-user");
-      if (response.data) {
-        setUser(response.data);
-      } else {
-        navigate("/login");
-      }
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      navigate("/login");
-    }
-  };
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    if (file && file.name.endsWith(".zip")) {
+    if (file && file.name.toLowerCase().endsWith(".zip")) {
       setZipFile(file);
     } else {
       toast.error("Please upload a valid ZIP file containing profile pictures.");
       setZipFile(null);
     }
+    e.target.value = "";
   };
+
   const handleUploadZip = async () => {
     if (!zipFile) {
       toast.error("Please select a valid ZIP file.");
       return;
     }
-  
     const formData = new FormData();
-    formData.append("profile_pics_zip", zipFile); // SAME AS BACKEND
-  
+    formData.append("profile_pics_zip", zipFile); // field name expected by backend
+
+    setUploading(true);
     try {
-      const response = await axios.post(`${mpodBackendUrl}upload-profile-pics`, formData, {
+      const response = await axios.post(apiUrl("upload-profile-pics"), formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-  
-      toast.success(response.data.message);
+      toast.success((response.data && response.data.message) || "Profile pictures uploaded.");
       setZipFile(null);
-      fetchUsers();
-    } catch (error) {
-      toast.error("Failed to upload profile pictures.");
-      console.error(error);
+      setImageVersion(Date.now());
+      reload();
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to upload profile pictures."));
+    } finally {
+      setUploading(false);
     }
   };
-  
 
-  const toggleDeleteModal = (user) => {
-    setUserToDelete(user);
-    setShowDeleteModal(!showDeleteModal);
+  const closeModal = () => {
+    if (!busy) setUserToDeactivate(null);
   };
 
-  const handleDelete = async () => {
+  const handleDeactivate = async () => {
+    if (!userToDeactivate) return;
+    const target = userToDeactivate;
+    setBusy(true);
     try {
-      await axios.delete(`${backendUrl}delete-user/${userToDelete._id}`);
-      toast.success("User deleted successfully");
-      setUserData(userData.filter((u) => u._id !== userToDelete._id));
-    } catch (error) {
-      toast.error("Failed to delete user.");
+      const response = await axios.delete(apiUrl(`delete-user/${target._id}`));
+      toast.success((response.data && response.data.message) || "User deactivated.");
+      setUsers((prev) => prev.map((u) => (u._id === target._id ? { ...u, status: 0 } : u)));
+      setUserToDeactivate(null);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to deactivate user."));
+    } finally {
+      setBusy(false);
     }
-    setShowDeleteModal(false);
   };
 
-  const data = {
-    columns: [
-      { label: "Profile Pic", field: "profile_pic", sort: "asc", width: 150 },
-      { label: "Name", field: "first_name", sort: "asc", width: 150 },
-      { label: "Roll No", field: "roll_no", sort: "asc", width: 150 },
-      { label: "Status", field: "status", sort: "asc", width: 100 },
-      { label: "Action", field: "actions", sort: "asc", width: 100 },
-    ],
-    rows: userData.map((user) => {
-      console.log(`${backendImageUrl}profile-pics/${user.roll_no}.png`);
-  
-      return {
-        profile_pic: user.roll_no ? (
+  const data = useMemo(
+    () => ({
+      columns: [
+        { label: "Profile Pic", field: "profile_pic", sort: "disabled", width: 80 },
+        { label: "Name", field: "first_name", sort: "asc", width: 150 },
+        { label: "Roll No", field: "roll_no", sort: "asc", width: 150 },
+        { label: "Status", field: "status", sort: "asc", width: 100 },
+        { label: "Action", field: "actions", sort: "disabled", width: 160 },
+      ],
+      rows: users.map((u) => ({
+        profile_pic: u.roll_no ? (
           <img
-            src={`${backendImageUrl}profile-pics/${user.roll_no}.png`}
+            src={`${IMAGE_BASE}profile-pics/${u.roll_no}.png${imageVersion ? `?v=${imageVersion}` : ""}`}
             alt="Profile"
             width="50px"
             onError={(e) => {
               e.target.onerror = null;
-              e.target.src = `${backendImageUrl}profile-pics/default.png`; // Fallback image if image not found
+              e.target.src = `${IMAGE_BASE}profile-pics/default.png`;
             }}
           />
         ) : (
           "No Image"
         ),
-        first_name: user.first_name,
-        roll_no: user.roll_no,
-        status: user.status === 1 ? (
-          <Badge color="success" className="bg-success">Active</Badge>
-        ) : (
-          <Badge color="danger" className="bg-danger">Inactive</Badge>
-        ),
+        first_name: u.first_name,
+        roll_no: u.roll_no,
+        status:
+          Number(u.status) === 1 ? (
+            <Badge color="success" className="bg-success">Active</Badge>
+          ) : (
+            <Badge color="danger" className="bg-danger">Inactive</Badge>
+          ),
         actions: (
           <div>
-            <Link to={`/edit-user/${user._id}`} className="btn btn-info btn-sm me-2">
+            <Link to={`/edit-user/${u._id}`} className="btn btn-info btn-sm me-2">
               Edit
             </Link>
-            <Button color="danger" size="sm" onClick={() => toggleDeleteModal(user)}>
-              Delete
+            <Button
+              color="danger"
+              size="sm"
+              disabled={Number(u.status) !== 1}
+              onClick={() => setUserToDeactivate(u)}
+            >
+              Deactivate
             </Button>
           </div>
         ),
-      };
+      })),
     }),
-  };
-  
+    [users, imageVersion]
+  );
+
   return (
     <React.Fragment>
       <Row>
-        <ToastContainer position="top-right" autoClose={5000} transition={Bounce} />
-
         <Col className="col-12">
           <Card>
-            <CardBody className="d-flex justify-content-between align-items-center">
-              <CardTitle className="h4">Users List</CardTitle>
-              <div>
+            <CardBody className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <CardTitle className="h4 mb-0">
+                {tenantName ? `${tenantName} - ` : ""}Users Profile Pictures
+              </CardTitle>
+              <div className="d-flex flex-wrap align-items-center gap-2">
+                {isPlatform && (
+                  <div className="d-flex align-items-center gap-2">
+                    <Label for="tenantSelect" className="mb-0 text-nowrap">Tenant</Label>
+                    <Input
+                      id="tenantSelect"
+                      type="select"
+                      value={tenantId || ""}
+                      onChange={(e) => setTenantId(e.target.value)}
+                    >
+                      {!tenants.some((t) => t._id === tenantId) && (
+                        <option value={tenantId || ""}>{tenantName || "Current tenant"}</option>
+                      )}
+                      {tenants.map((t) => (
+                        <option key={t._id} value={t._id}>
+                          {t.organization_name}
+                        </option>
+                      ))}
+                    </Input>
+                  </div>
+                )}
                 <input
+                  ref={fileInputRef}
                   type="file"
                   accept=".zip"
                   onChange={handleFileChange}
                   style={{ display: "none" }}
-                  id="zipFileInput"
                 />
-                <Button color="primary" onClick={() => document.getElementById("zipFileInput").click()}>
-                  Choose ZIP File
-                </Button>{" "}
-                <Button color="success" onClick={handleUploadZip} disabled={!zipFile}>
+                <Button color="primary" onClick={() => fileInputRef.current && fileInputRef.current.click()} disabled={uploading}>
+                  {zipFile ? `ZIP: ${zipFile.name}` : "Choose ZIP File"}
+                </Button>
+                <Button color="success" onClick={handleUploadZip} disabled={!zipFile || uploading}>
+                  {uploading && <Spinner size="sm" className="me-1" />}
                   Upload Profile Pics
                 </Button>
               </div>
             </CardBody>
             <CardBody>
-              {loading ? (
-                <div className="text-center">
-                  <MutatingDots
-                    visible={true}
-                    height="100"
-                    width="100"
-                    color="#2B3A4A"
-                    secondaryColor="#2B3A4A"
-                    radius="12.5"
-                    ariaLabel="mutating-dots-loading"
-                  />
-                </div>
-              ) : (
+              <LoadState
+                loading={loading}
+                error={error}
+                empty={!users.length}
+                emptyText="No users found for this tenant."
+                onRetry={reload}
+              >
                 <MDBDataTable responsive bordered data={data} noBottomColumns />
-              )}
+              </LoadState>
             </CardBody>
           </Card>
         </Col>
       </Row>
 
-      <DeleteConfirmationModal
-        isOpen={showDeleteModal}
-        toggle={() => setShowDeleteModal(!showDeleteModal)}
-        onDelete={handleDelete}
+      <ConfirmModal
+        isOpen={!!userToDeactivate}
+        toggle={closeModal}
+        onConfirm={handleDeactivate}
+        title="Deactivate user"
+        message={
+          userToDeactivate
+            ? `Deactivate ${userToDeactivate.first_name} (${userToDeactivate.roll_no})? They will no longer be able to log in.`
+            : ""
+        }
+        confirmLabel="Deactivate"
+        busy={busy}
       />
     </React.Fragment>
   );
 };
 
-export default UsersList;
+export default connect(null, { setBreadcrumbItems })(UsersProfilePicsList);

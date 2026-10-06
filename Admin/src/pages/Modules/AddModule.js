@@ -1,122 +1,85 @@
-import React, { useEffect, useState } from "react";
-import {
-  Row,
-  Col,
-  Card,
-  CardBody,
-  FormGroup,
-  Button,
-  CardTitle,
-  Label,
-} from "reactstrap";
-import { AvForm, AvField } from "availity-reactstrap-validation";
+import React, { useEffect, useState } from "react"
+import { Row, Col, Card, CardBody, Button, Label, Spinner } from "reactstrap"
+import { AvForm, AvField } from "availity-reactstrap-validation"
 import Select from "react-select"
-
-import { connect } from "react-redux";
-import { setBreadcrumbItems } from "../../store/actions";
-import axios from "axios";
+import { connect } from "react-redux"
 import { useNavigate } from "react-router-dom"
-import { ToastContainer, toast } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
-const AddModule = (props) => {
-  document.title = "Technial Hub| Add Module";
+import axios from "axios"
+import { toast } from "react-toastify"
+import { setBreadcrumbItems } from "../../store/actions"
+import { apiUrl, getErrorMessage } from "../../config/api"
 
-  const breadcrumbItems = [
-    { title: "TechnicalHub", link: "#" },
-    { title: "Modules", link: "/modules-list" },
-    { title: "Add Module", link: "/add-module" },
-  ];
-  const [data, setData] = useState({});
-  const [selectedGroup, setselectedGroup] = useState(null)
+const AddModule = props => {
+  document.title = "Add Module | Mpod"
+
+  const navigate = useNavigate()
+  const [moduleName, setModuleName] = useState("")
+  const [selectedTechnology, setSelectedTechnology] = useState(null)
   const [technologyData, setTechnologyData] = useState([])
-  const navigate = useNavigate();
-  const [file, setFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState("");
+  const [file, setFile] = useState(null)
+  const [previewUrl, setPreviewUrl] = useState("")
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    props.setBreadcrumbItems('Add Module', breadcrumbItems);
-    fetchData()
-  }, []);
-  // useEffect(() => {
-  //   let authUser = JSON.parse(localStorage.getItem('authUser'));
-  //   if (authUser.role == 'admin' || authUser.role == 'superadmin') {
-  //   }
-  //   else {
-  //     alert("your not autherized")
-  //     localStorage.clear();
-  //     window.location.href = '/admin/login';
-  //   }
-  // }, []);
-  const fetchData = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-    try {
-      const response = await axios.get(backendUrl + 'get-technologies');
-      if (response.status === 200) {
-        setTechnologyData(response.data);
-      }
-    } catch (error) {
-      console.log("Error fetching data:", error);
-    }
-  };
-
-  const optionGroup = technologyData.map((ele) => ({
-    options: [
-      { label: ele.technology_name, value: ele._id }
+    const breadcrumbItems = [
+      { title: "Mpod", link: "#" },
+      { title: "Modules", link: "/modules-list" },
+      { title: "Add Module", link: "/add-module" },
     ]
-  }));
+    props.setBreadcrumbItems("Add Module", breadcrumbItems)
 
-  const handleChange = (e) => {
-    setData({ ...data, module_name: e.target.value });
-  };
-  function handleSelectGroup(selectedGroup) {
-    setselectedGroup(selectedGroup)
-    // setData({ ...data, technology: selectedGroup.value });
+    axios
+      .get(apiUrl("get-technologies"))
+      .then(response => setTechnologyData(Array.isArray(response.data) ? response.data : []))
+      .catch(err => {
+        if (err.response?.status !== 404) {
+          toast.error(getErrorMessage(err, "Failed to load technologies."))
+        }
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
+  const technologyOptions = technologyData.map(ele => ({ label: ele.technology_name, value: ele._id }))
+
+  const handleFileChange = event => {
+    const selected = event.target.files[0] || null
+    setFile(selected)
+    setPreviewUrl("")
+    if (selected) {
+      const fileReader = new FileReader()
+      fileReader.onload = () => setPreviewUrl(fileReader.result)
+      fileReader.readAsDataURL(selected)
+    }
   }
-  const handleFileChange = (event) => {
-    setFile(event.target.files[0]);
-    const fileReader = new FileReader();
-    fileReader.onload = () => {
-      setPreviewUrl(fileReader.result);
-    };
-    fileReader.readAsDataURL(event.target.files[0]);
-  };
+
   const addModule = async () => {
-    if (!selectedGroup) {
-      toast.error("Please select a technology");
-      return;
+    if (!selectedTechnology) {
+      toast.error("Please select a technology")
+      return
     }
-    if (!data.module_name || data.module_name.trim() === "") {
-      toast.error("Module name is required");
-      return;
+    if (!moduleName.trim()) {
+      toast.error("Module name is required")
+      return
     }
-    // if (!file) {
-    //   toast.error("Please upload a module icon");
-    //   return;
-    // }
-  
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("module_name", data.module_name);
-    formData.append("technology", selectedGroup.value);
-  
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
+
+    const formData = new FormData()
+    if (file) formData.append("file", file)
+    formData.append("module_name", moduleName.trim())
+    formData.append("technology", selectedTechnology.value)
+
+    setSaving(true)
     try {
-      const response = await axios.post(backendUrl + "add-module", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
-      if (response.status === 200) {
-        toast.success("Module added successfully");
-        setTimeout(() => navigate("/modules-list"), 2000);
-      }
+      await axios.post(apiUrl("add-module"), formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      toast.success("Module added successfully")
+      navigate("/modules-list")
     } catch (error) {
-      console.error("Error adding module:", error);
-      toast.error("Something went wrong while adding the module");
+      toast.error(getErrorMessage(error, "Something went wrong while adding the module"))
+    } finally {
+      setSaving(false)
     }
-  };
-  
+  }
 
   return (
     <React.Fragment>
@@ -125,17 +88,15 @@ const AddModule = (props) => {
           <Card>
             <CardBody>
               <h4 className="card-title">ADD MODULE</h4>
-              <ToastContainer position="top-right" autoClose={3000} />
-
-              <AvForm className="needs-validation">
+              <AvForm className="needs-validation" onValidSubmit={addModule}>
                 <Row>
                   <Col md="6">
                     <div className="mb-3">
                       <Label>Select technology</Label>
                       <Select
-                        value={selectedGroup}
-                        onChange={handleSelectGroup}
-                        options={optionGroup}
+                        value={selectedTechnology}
+                        onChange={setSelectedTechnology}
+                        options={technologyOptions}
                         classNamePrefix="select2-selection"
                       />
                     </div>
@@ -153,7 +114,7 @@ const AddModule = (props) => {
                         className="form-control"
                         validate={{ required: { value: true } }}
                         id="validationCustom01"
-                        onChange={handleChange}
+                        onChange={e => setModuleName(e.target.value)}
                       />
                     </div>
                   </Col>
@@ -161,17 +122,21 @@ const AddModule = (props) => {
                 <Row>
                   <Col md="6">
                     <div className="mb-3">
-
-                      <div className="mb-3">
-                        <label className="form-lable">Default file input</label><br/>
-                        {previewUrl && <img src={previewUrl} alt="Module Icon" width="50px" />}
-                        <input type="file" className="form-control form-control-file" data-buttonname="btn-secondary" onChange={handleFileChange} />
-                      </div>
-
+                      <label className="form-label">Module icon</label>
+                      <br />
+                      {previewUrl && <img src={previewUrl} alt="Module Icon" width="50px" />}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="form-control form-control-file"
+                        data-buttonname="btn-secondary"
+                        onChange={handleFileChange}
+                      />
                     </div>
                   </Col>
                 </Row>
-                <Button color="primary" type="button" onClick={addModule}>
+                <Button color="primary" type="submit" disabled={saving}>
+                  {saving && <Spinner size="sm" className="me-1" />}
                   Submit
                 </Button>
               </AvForm>
@@ -180,7 +145,7 @@ const AddModule = (props) => {
         </Col>
       </Row>
     </React.Fragment>
-  );
-};
+  )
+}
 
-export default connect(null, { setBreadcrumbItems })(AddModule);
+export default connect(null, { setBreadcrumbItems })(AddModule)

@@ -6,7 +6,6 @@ import {
   CardBody,
   FormGroup,
   Button,
-  CardTitle,
   InputGroup,
   Input,
   Label,
@@ -18,94 +17,75 @@ import { connect } from "react-redux";
 import { setBreadcrumbItems } from "../../store/actions";
 import axios from "axios";
 import { useParams, useNavigate } from "react-router-dom"
-import "react-datepicker/dist/react-datepicker.css"
+import { toast } from "react-toastify";
+import { apiUrl, getErrorMessage } from "../../config/api";
+import { useAuth } from "../../context/AuthContext";
 
-const EditInterview = (props) => {
-  document.title = "Technial Hub | Edit Interview";
+const levelOptions = [
+  { label: "Easy", value: "easy" },
+  { label: "Medium", value: "medium" },
+  { label: "Hard", value: "hard" },
+  { label: "Any", value: "any" },
+];
+const platformOptions = [
+  { label: "Web", value: "web" },
+  { label: "MPOD", value: "mpod" },
+];
 
-  const breadcrumbItems = [
-    { title: "TechnicalHub", link: "#" },
-    { title: "Interviews List", link: "/ai-interviews-list" },
-    { title: "Edit Interview", link: "/add-ai-interview" },
-  ];
+const EditCodingInterview = (props) => {
+  document.title = "Edit Coding Interview | Mpod";
 
+  const { user } = useAuth();
   const [data, setData] = useState({});
-  const [selectedGroup, setselectedGroup] = useState(null)
-  const [selectedTechnologyGroup, setselectedTechnologyGroup] = useState(null)
-  const [selectedModuleGroup, setselectedModuleGroup] = useState(null)
-  const [selectedTopicGroup, setselectedTopicGroup] = useState(null)
   const [selectedLevel, setSelectedLevel] = useState(null);
-  const [courseData, setCourseData] = useState([])
-  const [technologyData, setTechnologyData] = useState([])
-  const [topicData, setTopicData] = useState([])
-  const [moduleData, setModuleData] = useState([])
   const [startDate, setStartDate] = useState(null);
   const [rollNo, setRollNo] = useState("");
-  const [interviewDetails, setInterviewDetails] = useState();
-  const [user, setUser] = useState()
-  const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
+  const [selectedPlatform, setSelectedPlatform] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
   const { id } = useParams();
   const navigate = useNavigate();
-  const [selectedPlatform, setSelectedPlatform] =useState();
 
   useEffect(() => {
-    props.setBreadcrumbItems('Edit Interview', breadcrumbItems);
-    const userDetails = JSON.parse(localStorage.getItem('authUser'))
-    if(userDetails) {
-      setUser(userDetails)
-    }
-   
+    props.setBreadcrumbItems('Edit Coding Interview', [
+      { title: "Mpod", link: "#" },
+      { title: "Coding Interviews List", link: "/coding-interviews-list" },
+      { title: "Edit Coding Interview", link: "#" },
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
   useEffect(() => {
     if (id) {
-        fetchDetails();
+      fetchDetails();
     }
-}, [id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
-const fetchDetails = async () => {
+  const fetchDetails = async () => {
     try {
-        const response = await axios.get(`${backendUrl}get-coding-interview-details-by-id/${id}`);
-        if (response.status === 200) {
-            const interviewDetails = response.data;
-            setInterviewDetails(interviewDetails);
-            setRollNo(interviewDetails.roll_no || "");
-
-            setSelectedLevel(
-                levelOptions.find(option => option.value === interviewDetails.level) || null
-            );
-
-            setStartDate(interviewDetails.start_date_time || null);
-            setSelectedPlatform(
-              platformOptions.find(option => option.value === interviewDetails.platform) || null
-            );
-            setData({ no_of_questions: interviewDetails.questions_count || "" });
-        }
+      const response = await axios.get(apiUrl(`get-coding-interview-details-by-id/${id}`));
+      const interviewDetails = response.data || {};
+      setRollNo(interviewDetails.roll_no || "");
+      setSelectedLevel(
+        levelOptions.find(option => option.value === interviewDetails.level) || null
+      );
+      setStartDate(interviewDetails.start_date_time || null);
+      setSelectedPlatform(
+        platformOptions.find(option => option.value === interviewDetails.platform) || null
+      );
+      setData({ no_of_questions: interviewDetails.questions_count || "" });
     } catch (err) {
-        console.log("Error fetching interview details:", err);
+      toast.error(getErrorMessage(err, "Failed to load interview details."));
     }
-};
+  };
 
-  const levelOptions = [
-    { label: "Easy", value: "easy" },
-    { label: "Medium", value: "medium" },
-    { label: "Hard", value: "hard" },
-    { label: "Any", value: "any" },
-
-  ];
-  const platformOptions = [
-    { label: "Web", value: "web" },
-    { label: "MPOD", value: "mpod" },
-
-  ];
   const handleChange = (e) => {
     setData({ ...data, no_of_questions: e.target.value });
   };
   const handleRollNoChange = (e) => {
-    const { value } = e.target;
-    setRollNo(value);
+    setRollNo(e.target.value);
   };
   const handlePlatformSelect = (selectedplatform) => {
-    console.log(selectedplatform)
     setSelectedPlatform(selectedplatform);
   };
   const handleLevelSelect = (selectedLevel) => {
@@ -113,27 +93,27 @@ const fetchDetails = async () => {
   };
 
   const handleSubmit = async () => {
-    const utcDate = new Date(startDate).toISOString();
-
+    if (!selectedPlatform || !rollNo.trim() || !selectedLevel || !startDate || !data.no_of_questions) {
+      toast.warn("Please fill all required fields");
+      return;
+    }
     const dataList = {
-      'platform':selectedPlatform.value,
-      'roll_no': rollNo,
-      'start_date_time': utcDate,
+      'platform': selectedPlatform.value,
+      'roll_no': rollNo.trim(),
+      'start_date_time': new Date(startDate).toISOString(),
       'level': selectedLevel.value,
       "questions_count": data.no_of_questions,
-      "created_by": user ? user.roll_no : "null"
-
+      "created_by": user.roll_no
     }
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
+    setIsSaving(true);
     try {
-      const response = await axios.put(backendUrl + 'update-coding-interview/' + id, dataList);
-      if (response.status == 200) {
-        console.log(response.data);
-        alert("success");
-        navigate(`/coding-interviews-list`)
-      }
+      await axios.put(apiUrl('update-coding-interview/' + id), dataList);
+      toast.success("Interview updated successfully!");
+      navigate(`/coding-interviews-list`)
     } catch (error) {
-      console.error('Error adding data:', error);
+      toast.error(getErrorMessage(error, "Failed to update interview."));
+    } finally {
+      setIsSaving(false);
     }
   };
   return (
@@ -142,7 +122,7 @@ const fetchDetails = async () => {
         <Col xl="6">
           <Card>
             <CardBody>
-              <h4 className="card-title">Add Interview</h4>
+              <h4 className="card-title">Edit Coding Interview</h4>
 
               <AvForm className="needs-validation">
               <Row>
@@ -230,8 +210,8 @@ const fetchDetails = async () => {
                   </Col>
                 </Row>
 
-                <Button color="primary" type="button" onClick={handleSubmit}>
-                  Update
+                <Button color="primary" type="button" onClick={handleSubmit} disabled={isSaving}>
+                  {isSaving ? "Updating..." : "Update"}
                 </Button>
               </AvForm>
             </CardBody>
@@ -242,4 +222,4 @@ const fetchDetails = async () => {
   );
 };
 
-export default connect(null, { setBreadcrumbItems })(EditInterview);
+export default connect(null, { setBreadcrumbItems })(EditCodingInterview);

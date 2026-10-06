@@ -1,249 +1,178 @@
-import React, { useEffect, useState } from "react";
-import { Row, Col, Card, CardBody, Button, Label } from "reactstrap";
-import { AvForm, AvField } from "availity-reactstrap-validation";
-import { ToastContainer, toast, Bounce } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
-import { connect } from "react-redux";
-import { setBreadcrumbItems } from "../../store/actions";
-import axios from "axios";
-import { useNavigate, useParams } from "react-router-dom";
+import React, { useCallback, useEffect, useState } from "react"
+import PropTypes from "prop-types"
+import { Row, Col, Card, CardBody, Button, Label, Input, FormFeedback, Form, Spinner } from "reactstrap"
+import { toast } from "react-toastify"
+import { connect } from "react-redux"
+import { Link, useNavigate, useParams } from "react-router-dom"
+import axios from "axios"
 
-const EditTenant = (props) => {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  document.title = "Technical Hub | Edit Tenant";
+import { setBreadcrumbItems } from "../../store/actions"
+import { apiUrl, getErrorMessage } from "../../config/api"
+import LoadState from "../../components/Common/LoadState"
 
-  const breadcrumbItems = [
-    { title: "Technical Hub", link: "#" },
-    { title: "Tenants", link: "/tenants-list" },
-    { title: "Edit Tenant", link: `/edit-tenant/${id}` },
-  ];
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-  const [tenantData, setTenantData] = useState({
-    organization_name: "",
-    contact_person: "",
-    email: "",
-    assigned_credits: [],
-    interview_duration_minutes: 30,
-    status: 1,
-  });
+const validate = data => {
+  const errors = {}
+  if (!data.organization_name.trim()) errors.organization_name = "Please enter organization name"
+  if (!data.contact_person.trim()) errors.contact_person = "Please enter contact person"
+  if (!EMAIL_RE.test(data.email.trim())) errors.email = "Please enter a valid email"
+  const duration = Number(data.interview_duration_minutes)
+  if (!Number.isInteger(duration) || duration <= 0)
+    errors.interview_duration_minutes = "Please enter a duration in minutes"
+  return errors
+}
 
-  const [loading, setLoading] = useState(true);
+// GET get-tenant/:id, PUT update-tenant/:id.
+// Credits are NOT edited here any more (the backend ignores assigned_credits/active_credits);
+// they are managed on /tenant-credits/:id through the credit ledger.
+const EditTenant = props => {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const { setBreadcrumbItems: setBreadcrumbs } = props
+
+  const [tenantData, setTenantData] = useState(null)
+  const [activeCredits, setActiveCredits] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [touched, setTouched] = useState(false)
 
   useEffect(() => {
-    props.setBreadcrumbItems("Edit Tenant", breadcrumbItems);
-    fetchTenantData();
-  }, []);
+    document.title = "Edit Tenant | Mpod"
+    setBreadcrumbs("Edit Tenant", [
+      { title: "Mpod", link: "#" },
+      { title: "Tenants", link: "/tenants-list" },
+      { title: "Edit Tenant", link: `/edit-tenant/${id}` },
+    ])
+  }, [setBreadcrumbs, id])
 
-  const fetchTenantData = async () => {
+  const fetchTenant = useCallback(async () => {
+    setLoading(true)
+    setLoadError(null)
     try {
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-      const response = await axios.get(`${backendUrl}get-tenant/${id}`);
-      if (response.status === 200) {
-        const tenant = response.data;
-        setTenantData({
-          organization_name: tenant.organization_name || "",
-          contact_person: tenant.contact_person || "",
-          email: tenant.email || "",
-          assigned_credits: tenant.assigned_credits || [],
-          interview_duration_minutes: tenant.interview_duration_minutes || 30,
-          status: tenant.status || 1,
-        });
-        setLoading(false);
-      }
+      const { data: tenant } = await axios.get(apiUrl(`get-tenant/${id}`))
+      setTenantData({
+        organization_name: tenant.organization_name || "",
+        organization_code: tenant.organization_code || "",
+        contact_person: tenant.contact_person || "",
+        email: tenant.email || "",
+        interview_duration_minutes: String(tenant.interview_duration_minutes || 30),
+        status: String(tenant.status === undefined || tenant.status === null ? 1 : tenant.status),
+      })
+      setActiveCredits(tenant.active_credits)
     } catch (error) {
-      console.error("Error fetching tenant data:", error);
-      toast.error("Failed to fetch tenant data.", {
-        position: "top-right",
-        autoClose: 4000,
-        transition: Bounce,
-      });
-      navigate("/tenants-list");
+      setLoadError(getErrorMessage(error, "Failed to load tenant."))
+    } finally {
+      setLoading(false)
     }
-  };
+  }, [id])
 
-  const handleChange = (e) => {
-    setTenantData({ ...tenantData, [e.target.name]: e.target.value });
-  };
+  useEffect(() => {
+    fetchTenant()
+  }, [fetchTenant])
 
-  const getActiveCredits = () => {
-    return tenantData.assigned_credits.reduce((sum, val) => sum + Number(val), 0);
-  };
+  const errors = tenantData ? validate(tenantData) : {}
+  const showError = name => touched && errors[name]
+  const handleChange = e => setTenantData({ ...tenantData, [e.target.name]: e.target.value })
 
-  const handleSubmit = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-    const dataToSend = {
-      ...tenantData,
-      active_credits: getActiveCredits(),
-    };
-
+  const handleSubmit = async e => {
+    e.preventDefault()
+    setTouched(true)
+    if (Object.keys(errors).length) return
+    setSubmitting(true)
     try {
-      const response = await axios.put(`${backendUrl}update-tenant/${id}`, dataToSend);
-      if (response.status === 200) {
-        toast.success("Tenant updated successfully!", {
-          position: "top-right",
-          autoClose: 3000,
-          transition: Bounce,
-        });
-        setTimeout(() => navigate("/tenants-list"), 2000);
-      }
+      const response = await axios.put(apiUrl(`update-tenant/${id}`), {
+        organization_name: tenantData.organization_name.trim(),
+        contact_person: tenantData.contact_person.trim(),
+        email: tenantData.email.trim(),
+        interview_duration_minutes: parseInt(tenantData.interview_duration_minutes, 10),
+        status: Number(tenantData.status),
+      })
+      toast.success((response.data && response.data.message) || "Tenant updated successfully")
+      navigate("/tenants-list")
     } catch (error) {
-      console.error("Error updating tenant:", error);
-      toast.error(
-        error.response?.data?.message || "Failed to update tenant. Please try again.",
-        {
-          position: "top-right",
-          autoClose: 4000,
-          transition: Bounce,
-        }
-      );
+      toast.error(getErrorMessage(error, "Failed to update tenant. Please try again."))
+    } finally {
+      setSubmitting(false)
     }
-  };
-
-  if (loading) {
-    return <div>Loading tenant data...</div>;
   }
 
+  const field = (name, label, type = "text", extra = {}) => (
+    <div className="mb-3">
+      <Label htmlFor={name}>{label}</Label>
+      <Input
+        id={name}
+        name={name}
+        type={type}
+        value={tenantData[name]}
+        onChange={handleChange}
+        invalid={!!showError(name)}
+        {...extra}
+      />
+      <FormFeedback>{errors[name]}</FormFeedback>
+    </div>
+  )
+
   return (
-    <React.Fragment>
-      <ToastContainer />
-      <Row>
-        <Col xl="6">
-          <Card>
-            <CardBody>
-              <h4 className="card-title">Edit Tenant</h4>
-              <AvForm className="needs-validation">
-                <Row>
-                  <Col md="12">
-                    <div className="mb-3">
-                      <Label>Organization Name</Label>
-                      <AvField
-                        name="organization_name"
-                        placeholder="Enter organization name"
-                        type="text"
-                        value={tenantData.organization_name}
-                        errorMessage="Please enter organization name"
-                        className="form-control"
-                        validate={{ required: { value: true } }}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  </Col>
+    <LoadState loading={loading} error={loadError} onRetry={fetchTenant}>
+      {tenantData && (
+        <Row>
+          <Col xl="6">
+            <Card>
+              <CardBody>
+                <h4 className="card-title mb-4">Edit Tenant</h4>
+                <Form onSubmit={handleSubmit} noValidate>
+                  {field("organization_name", "Organization Name")}
+                  <div className="mb-3">
+                    <Label htmlFor="organization_code">Organization Code</Label>
+                    <Input id="organization_code" value={tenantData.organization_code} disabled readOnly />
+                  </div>
+                  {field("contact_person", "Contact Person")}
+                  {field("email", "Email", "email")}
+                  {field("interview_duration_minutes", "Interview Duration (minutes)", "number", {
+                    min: 1,
+                    step: 1,
+                  })}
+                  <div className="mb-3">
+                    <Label htmlFor="status">Status</Label>
+                    <Input id="status" type="select" name="status" value={tenantData.status} onChange={handleChange}>
+                      <option value="1">Active</option>
+                      <option value="0">Inactive</option>
+                    </Input>
+                  </div>
+                  <Button color="primary" type="submit" disabled={submitting}>
+                    {submitting && <Spinner size="sm" className="me-1" />}
+                    Save
+                  </Button>
+                </Form>
+              </CardBody>
+            </Card>
+          </Col>
+          <Col xl="6">
+            <Card>
+              <CardBody>
+                <h4 className="card-title mb-3">Credits</h4>
+                <p className="mb-1 text-muted">Current balance</p>
+                <h2 className="mb-3">{activeCredits === undefined || activeCredits === null ? "—" : activeCredits}</h2>
+                <p className="text-muted small">
+                  Credits are changed through top-ups and adjustments so every change is recorded in the
+                  tenant&apos;s credit history.
+                </p>
+                <Link to={`/tenant-credits/${id}`} className="btn btn-outline-primary">
+                  Manage credits &amp; history
+                </Link>
+              </CardBody>
+            </Card>
+          </Col>
+        </Row>
+      )}
+    </LoadState>
+  )
+}
 
-                  <Col md="12">
-                    <div className="mb-3">
-                      <Label>Contact Person</Label>
-                      <AvField
-                        name="contact_person"
-                        placeholder="Enter contact person"
-                        type="text"
-                        value={tenantData.contact_person}
-                        errorMessage="Please enter contact person"
-                        className="form-control"
-                        validate={{ required: { value: true } }}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  </Col>
+EditTenant.propTypes = {
+  setBreadcrumbItems: PropTypes.func,
+}
 
-                  <Col md="12">
-                    <div className="mb-3">
-                      <Label>Email</Label>
-                      <AvField
-                        name="email"
-                        placeholder="Enter email address"
-                        type="email"
-                        value={tenantData.email}
-                        errorMessage="Please enter a valid email"
-                        className="form-control"
-                        validate={{
-                          required: { value: true },
-                          email: { value: true },
-                        }}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  </Col>
-
-                  <Col md="12">
-                    <div className="mb-3">
-                      <Label>Assigned Credits (comma-separated)</Label>
-                      <AvField
-                        name="assigned_credits"
-                        placeholder="Enter assigned credits (e.g. 10,20,30)"
-                        type="text"
-                        value={tenantData.assigned_credits.join(",")}
-                        errorMessage="Please enter assigned credits"
-                        className="form-control"
-                        validate={{ required: { value: true } }}
-                        onChange={(e) =>
-                          setTenantData({
-                            ...tenantData,
-                            assigned_credits: e.target.value
-                              .split(",")
-                              .map((num) => num.trim())
-                              .filter((num) => num !== ""),
-                          })
-                        }
-                      />
-                    </div>
-                  </Col>
-
-                  <Col md="12">
-                    <div className="mb-3">
-                      <Label>Active Credits (auto-calculated)</Label>
-                      <input
-                        type="number"
-                        className="form-control"
-                        value={getActiveCredits()}
-                        disabled
-                      />
-                    </div>
-                  </Col>
-
-                  <Col md="12">
-                    <div className="mb-3">
-                      <Label>Interview Duration (minutes)</Label>
-                      <AvField
-                        name="interview_duration_minutes"
-                        placeholder="Enter interview duration"
-                        type="number"
-                        value={tenantData.interview_duration_minutes}
-                        errorMessage="Please enter interview duration"
-                        className="form-control"
-                        validate={{ required: { value: true } }}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  </Col>
-
-                  <Col md="12">
-                    <div className="mb-3">
-                      <Label>Status</Label>
-                      <AvField
-                        type="select"
-                        name="status"
-                        value={tenantData.status}
-                        className="form-control"
-                        onChange={handleChange}
-                      >
-                        <option value={1}>Active</option>
-                        <option value={0}>Inactive</option>
-                      </AvField>
-                    </div>
-                  </Col>
-                </Row>
-
-                <Button color="primary" type="button" onClick={handleSubmit}>
-                  Update Tenant
-                </Button>
-              </AvForm>
-            </CardBody>
-          </Card>
-        </Col>
-      </Row>
-    </React.Fragment>
-  );
-};
-
-export default connect(null, { setBreadcrumbItems })(EditTenant);
+export default connect(null, { setBreadcrumbItems })(EditTenant)

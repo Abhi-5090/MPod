@@ -17,114 +17,109 @@ import { connect } from "react-redux";
 import { setBreadcrumbItems } from "../../store/actions";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import "react-datepicker/dist/react-datepicker.css";
-import axiosInstance from "../../api/axiosInstance";
-import { ToastContainer, toast } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
+import { toast } from "react-toastify";
 import * as XLSX from "xlsx";
+import { apiUrl, getErrorMessage } from "../../config/api";
+import { useAuth } from "../../context/AuthContext";
+
+const levelOptions = [
+  { label: "Easy", value: "easy" },
+  { label: "Medium", value: "medium" },
+  { label: "Hard", value: "hard" },
+  { label: "Any", value: "any" },
+];
+
+const statusOptions = [
+  { label: "Active", value: "1" },
+  { label: "Not Active", value: "0" },
+];
+
+const platformOptions = [
+  { label: "Web", value: "web" },
+  { label: "MPOD", value: "mpod" },
+];
+
+const interviewTypeOptions = [
+  { label: "Single", value: "single" },
+  { label: "Bulk", value: "bulk" },
+];
+
 const AddInterview = (props) => {
-  document.title = "Technial Hub | Add Interview";
+  document.title = "Add Interview | Mpod";
 
-  const breadcrumbItems = [
-    { title: "TechnicalHub", link: "#" },
-    { title: "Interviews List", link: "/ai-interviews-list" },
-    { title: "Add Interview", link: "/add-ai-interview" },
-  ];
-
+  const { user } = useAuth();
   const [data, setData] = useState({});
-  const [selectedGroup, setselectedGroup] = useState(null);
   const [selectedTechnologyGroup, setselectedTechnologyGroup] = useState(null);
   const [selectedModuleGroup, setselectedModuleGroup] = useState(null);
   const [selectedTopicGroup, setselectedTopicGroup] = useState(null);
   const [selectedLevel, setSelectedLevel] = useState(null);
-  const [selectedType, setSelectedType] = useState(null);
-  const [courseData, setCourseData] = useState([]);
   const [technologyData, setTechnologyData] = useState([]);
   const [topicData, setTopicData] = useState([]);
-  const [batchData, setBatchData] = useState([]);
   const [moduleData, setModuleData] = useState([]);
   const [startDate, setStartDate] = useState(null);
   const [rollNo, setRollNo] = useState("");
   const [selectedStatus, setSelectedStatus] = useState(null);
-  const [selectedRound, setSelectedRound] = useState(null);
   const [selectedInterviewType, setSelectedInterviewType] = useState(null);
-  const [user, setUser] = useState();
   const [selectedPlatform, setSelectedPlatform] = useState(null);
   const [file, setFile] = useState(null);
   const navigate = useNavigate();
   const [failedResults, setFailedResults] = useState([]);
-  const [isLoading, setIsLoading] = useState(false)
+  const [bulkTotal, setBulkTotal] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    props.setBreadcrumbItems("Add Interview", breadcrumbItems);
+    props.setBreadcrumbItems("Add Interview", [
+      { title: "Mpod", link: "#" },
+      { title: "Interviews List", link: "/ai-interviews-list" },
+      { title: "Add Interview", link: "/add-ai-interview" },
+    ]);
     fetchTechnologyData();
-    if (selectedTechnologyGroup) {
-      fetchModuleData();
-    }
-    if (selectedModuleGroup) {
-      fetchTopicsData();
-    }
-  }, [selectedTechnologyGroup, selectedModuleGroup]);
-
-  useEffect(() => {
-    fetchCurrentUserData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchCurrentUserData = async () => {
-    try {
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-      const response = await axios.get(backendUrl + "get-admin-current-user");
-      if (response.data) {
-        setUser(response.data);
-      } else {
-        navigate("/login");
-      }
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      navigate("/login");
+  useEffect(() => {
+    if (selectedTechnologyGroup) fetchModuleData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTechnologyGroup]);
+
+  useEffect(() => {
+    if (selectedModuleGroup && selectedModuleGroup.length) {
+      fetchTopicsData();
+    } else {
+      setTopicData([]);
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedModuleGroup]);
 
   const fetchTechnologyData = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
     try {
-      const response = await axios.get(backendUrl + "get-technologies");
-      if (response.status === 200) {
-        setTechnologyData(response.data);
-      }
+      const response = await axios.get(apiUrl("get-technologies"));
+      setTechnologyData(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
-      console.log("Error fetching data:", error);
+      toast.error(getErrorMessage(error, "Failed to load technologies."));
     }
   };
 
   const fetchModuleData = async () => {
-    if (selectedTechnologyGroup) {
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-      try {
-        const response = await axios.post(backendUrl + "get-modules-by-technology", {
-          technology_id: selectedTechnologyGroup.value,
-        });
-        if (response.status === 200) {
-          setModuleData(response.data);
-        }
-      } catch (error) {
-        console.log("Error fetching data:", error);
-      }
+    try {
+      const response = await axios.post(apiUrl("get-modules-by-technology"), {
+        technology_id: selectedTechnologyGroup.value,
+      });
+      setModuleData(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to load modules."));
     }
   };
 
   const fetchTopicsData = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
     try {
       const moduleIds = selectedModuleGroup.map((group) => group.value);
-      const response = await axios.post(backendUrl + "get-topics-by-multi-modules", {
+      const response = await axios.post(apiUrl("get-topics-by-multi-modules"), {
         module_ids: moduleIds,
       });
-      if (response.status === 200) {
-        setTopicData(response.data);
-      }
+      setTopicData(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
-      console.log("Error fetching data:", error);
+      toast.error(getErrorMessage(error, "Failed to load topics."));
     }
   };
 
@@ -141,35 +136,12 @@ const AddInterview = (props) => {
     options: [{ label: ele.topic_name, value: ele._id }],
   }));
 
-  const levelOptions = [
-    { label: "Easy", value: "easy" },
-    { label: "Medium", value: "medium" },
-    { label: "Hard", value: "hard" },
-    { label: "Any", value: "any" },
-  ];
-
-  const statusOptions = [
-    { label: "Active", value: "1" },
-    { label: "Not Active", value: "0" },
-  ];
-
-  const platformOptions = [
-    { label: "Web", value: "web" },
-    { label: "MPOD", value: "mpod" },
-  ];
-
-  const interviewTypeOptions = [
-    { label: "Single", value: "single" },
-    { label: "Bulk", value: "bulk" },
-  ];
-
   const handleChange = (e) => {
     setData({ ...data, no_of_questions: e.target.value });
   };
 
   const handleRollNoChange = (e) => {
-    const { value } = e.target;
-    setRollNo(value);
+    setRollNo(e.target.value);
   };
 
   const handleFileChange = (e) => {
@@ -178,6 +150,10 @@ const AddInterview = (props) => {
 
   const handleTechnologySelectGroup = (selectedGroup) => {
     setselectedTechnologyGroup(selectedGroup);
+    // Modules/topics belong to the previous technology
+    setselectedModuleGroup(null);
+    setselectedTopicGroup(null);
+    setModuleData([]);
   };
 
   const handleSelectModuleGroup = (selectedGroup) => {
@@ -207,8 +183,7 @@ const AddInterview = (props) => {
     setFile(null);
   };
 
-  const AddInterview = async () => {
-    setIsLoading(true)
+  const validate = () => {
     if (
       !selectedPlatform ||
       !selectedTechnologyGroup ||
@@ -220,83 +195,55 @@ const AddInterview = (props) => {
       !selectedStatus ||
       !selectedInterviewType
     ) {
-      toast.warn("Please fill all required fields");
-      setIsLoading(false)
+      return "Please fill all required fields";
+    }
+    if (Number(data.no_of_questions) > 10) return "please enter upto 10 questions";
+    if (selectedInterviewType.value === "single" && !rollNo) return "Please enter a Roll No";
+    if (selectedInterviewType.value === "bulk" && !file) return "Please upload a file";
+    return null;
+  };
 
+  const AddInterview = async () => {
+    const validationError = validate();
+    if (validationError) {
+      toast.warn(validationError);
       return;
     }
-    if (data.no_of_questions > 10) {
-      toast.warn("please enter upto 10 questions")
-      setIsLoading(false)
-
-      return;
-    }
-    if (selectedInterviewType.value === "single" && !rollNo) {
-      toast.warn("Please enter a Roll No");
-      setIsLoading(false)
-
-      return;
-    }
-
-    if (selectedInterviewType.value === "bulk" && !file) {
-      toast.warn("Please upload a file");
-      setIsLoading(false)
-
-      return;
-    }
-    if (selectedInterviewType.value === "single") {
-      const dataList = {
-        platform: selectedPlatform.value,
-        roll_no: rollNo.toUpperCase(),
-        technology: selectedTechnologyGroup.value,
-        module: selectedModuleGroup.map(group => group.value),
-        topic: selectedTopicGroup.map(group => group.value),
-        start_date_time: startDate,
-        level: selectedLevel.value,
-        questions_count: data.no_of_questions,
-        status: selectedStatus.value,
-        created_by: user ? user.roll_no : "null",
-        tenant_id: user ? user.t_id : "null",
-      };
-
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-      try {
-        console.log(dataList)
-        const response = await axios.post(backendUrl + "add-interviewee-details", dataList);
-        if (response.status === 201) {
-          setIsLoading(false)
-          toast.success("Interview added successfully!");
-          navigate(`/ai-interviews-list`);
-        }
-      } catch (error) {
-        console.log(error)
-        if (error.response?.status === 400) {
-          toast.error(error.response.data.message);
-        } else {
-          toast.error("Something went wrong");
-        }
-        console.error("Error adding data:", error);
-      }
-    } else {
-      console.log(user)
-      const dataList = {
-        platform: selectedPlatform.value,
-        // roll_no: user ? user.roll_no : "null",
-        file: selectedInterviewType.value === "bulk" ? file : null,
-        technology: selectedTechnologyGroup.value,
-        module: selectedModuleGroup.map((group) => group.value),
-        topic: selectedTopicGroup.map((group) => group.value),
-        start_date_time: startDate,
-        level: selectedLevel.value,
-        questions_count: data.no_of_questions,
-        status: selectedStatus.value,
-        created_by: user ? user.roll_no : "null",
-        tenant_id: user ? user.t_id : "null",
-        type: selectedInterviewType.value
-      };
-      console.log(dataList)
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-      try {
+    setIsLoading(true);
+    setFailedResults([]);
+    try {
+      if (selectedInterviewType.value === "single") {
+        const dataList = {
+          platform: selectedPlatform.value,
+          roll_no: rollNo.trim().toUpperCase(),
+          technology: selectedTechnologyGroup.value,
+          module: selectedModuleGroup.map((group) => group.value),
+          topic: selectedTopicGroup.map((group) => group.value),
+          start_date_time: startDate,
+          level: selectedLevel.value,
+          questions_count: data.no_of_questions,
+          status: selectedStatus.value,
+          created_by: user.roll_no,
+          tenant_id: user.t_id,
+        };
+        await axios.post(apiUrl("add-interviewee-details"), dataList);
+        toast.success("Interview added successfully!");
+        navigate("/ai-interviews-list");
+      } else {
+        const dataList = {
+          platform: selectedPlatform.value,
+          file,
+          technology: selectedTechnologyGroup.value,
+          module: selectedModuleGroup.map((group) => group.value),
+          topic: selectedTopicGroup.map((group) => group.value),
+          start_date_time: startDate,
+          level: selectedLevel.value,
+          questions_count: data.no_of_questions,
+          status: selectedStatus.value,
+          created_by: user.roll_no,
+          tenant_id: user.t_id,
+          type: selectedInterviewType.value,
+        };
         const formData = new FormData();
         Object.entries(dataList).forEach(([key, value]) => {
           if (key === "module" || key === "topic") {
@@ -308,34 +255,27 @@ const AddInterview = (props) => {
           }
         });
 
-        const response = await axios.post(backendUrl + "add-bulk-interviewee-details", formData, {
+        const response = await axios.post(apiUrl("add-bulk-interviewee-details"), formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
 
-        if (response.status === 201) {
-          setIsLoading(false)
+        const failed = response.status === 207 && Array.isArray(response.data?.results)
+          ? response.data.results.filter((r) => r.status === "failed")
+          : [];
+        if (failed.length) {
+          setFailedResults(failed); // Show failed details on screen
+          setBulkTotal(response.data.total || response.data.results.length);
+          toast.error("Some interviews failed to be scheduled.");
+        } else {
           toast.success("Interview added successfully!");
           navigate("/ai-interviews-list");
-        } else if (response.status === 207) {
-          setIsLoading(false)
-          if (response.data.failed != 0) {
-            const failed = response.data.results.filter(r => r.status === "failed");
-            setFailedResults(failed); // Show failed details on screen
-            toast.error("Some interviews failed to be scheduled.");
-          } else {
-            setIsLoading(false)
-            toast.success("Interview added successfully!");
-            navigate("/ai-interviews-list");
-          }
         }
-      } catch (error) {
-        if (error.response?.status === 400) {
-          toast.error(error.response.data.message);
-        } else {
-          toast.error("Something went wrong");
-        }
-        console.error("Error adding data:", error);
       }
+    } catch (error) {
+      // e.g. 400 insufficient credits
+      toast.error(getErrorMessage(error, "Failed to add interview."));
+    } finally {
+      setIsLoading(false);
     }
   };
   const handleSampleDownload = () => {
@@ -356,8 +296,6 @@ const AddInterview = (props) => {
           <Card>
             <CardBody>
               <h4 className="card-title">Add Interview</h4>
-              <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
-
               <AvForm className="needs-validation">
                 <Row>
                   <Col md="6">
@@ -543,7 +481,7 @@ const AddInterview = (props) => {
               <div className="card border-danger shadow-sm">
                 <div className="card-header bg-danger text-white">
                   <h5 className="mb-0"> Failed Interview Creations</h5>
-                  <small>{failedResults.length} out of {failedResults?.total || 0} interviews failed</small>
+                  <small>{failedResults.length} out of {bulkTotal} interviews failed</small>
                 </div>
                 <ul className="list-group list-group-flush">
                   {failedResults.map((item, index) => (
@@ -552,7 +490,7 @@ const AddInterview = (props) => {
                         <span className="badge bg-danger rounded-pill">{item.roll_no}</span>
                       </div>
                       <div>
-                        <strong>Reason:</strong> {item.message}
+                        <strong>Reason:</strong> {item.message || item.reason}
                       </div>
                     </li>
                   ))}

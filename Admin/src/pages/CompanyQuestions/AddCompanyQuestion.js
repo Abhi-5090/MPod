@@ -8,20 +8,20 @@ import {
   Label,
 } from "reactstrap";
 import Select from "react-select";
-import { ToastContainer, toast, Bounce } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import { toast } from 'react-toastify';
 import { connect } from "react-redux";
 import { setBreadcrumbItems } from "../../store/actions";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { apiUrl, getErrorMessage } from "../../config/api";
 
 const AddCompanyQuestion = (props) => {
-  document.title = "Technical Hub | Add Company Question";
+  document.title = "Add Company Question | Mpod";
 
   const breadcrumbItems = [
-    { title: "TechnicalHub", link: "#" },
+    { title: "Mpod", link: "#" },
     { title: "Company Questions", link: "/companies-questions-list" },
-    { title: "Add Company Questions", link: "/add-company-question" },
+    { title: "Add Company Questions", link: "#" },
   ];
 
   const navigate = useNavigate();
@@ -35,41 +35,30 @@ const AddCompanyQuestion = (props) => {
   const [selectedYear, setSelectedYear] = useState(null);
   const [selectedTag, setSelectedTag] = useState(null);
   const [file, setFile] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     props.setBreadcrumbItems('Add Company Question', breadcrumbItems);
     fetchCompanies();
     fetchTags();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // useEffect(() => {
-  //   let authUser = JSON.parse(localStorage.getItem('authUser'));
-  //   if (!authUser || (authUser.role !== 'admin' && authUser.role !== 'superadmin')) {
-  //     alert("You are not authorized");
-  //     localStorage.clear();
-  //     window.location.href = '/admin/login';
-  //   }
-  // }, []);
 
   const fetchCompanies = async () => {
     try {
-      const response = await axios.get(process.env.REACT_APP_MPOD_BACKEND_URL + 'companies-list');
-      if (response.status === 200) {
-        setCompanies(response.data);
-      }
+      const response = await axios.get(apiUrl('companies-list'));
+      setCompanies(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
-      console.error("Error fetching companies:", error);
+      toast.error(getErrorMessage(error, "Failed to load companies."));
     }
   };
 
   const fetchTags = async () => {
     try {
-      const response = await axios.get(process.env.REACT_APP_MPOD_BACKEND_URL + 'tags-list');
-      if (response.status === 200) {
-        setTags(response.data.tags);
-      }
+      const response = await axios.get(apiUrl('tags-list'));
+      setTags(response.data && Array.isArray(response.data.tags) ? response.data.tags : []);
     } catch (error) {
-      console.error("Error fetching tags:", error);
+      toast.error(getErrorMessage(error, "Failed to load tags."));
     }
   };
 
@@ -104,7 +93,7 @@ const AddCompanyQuestion = (props) => {
   }));
 
   const handleFileChange = (event) => {
-    setFile(event.target.files[0]);
+    setFile(event.target.files[0] || null);
   };
 
   const addQuestion = async () => {
@@ -121,8 +110,9 @@ const AddCompanyQuestion = (props) => {
     formData.append('year', selectedYear.value);
     formData.append('tag', selectedTag.value);
 
+    setSubmitting(true);
     try {
-      const response = await axios.post(process.env.REACT_APP_MPOD_BACKEND_URL + 'add-company-question', formData, {
+      const response = await axios.post(apiUrl('add-company-question'), formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
@@ -131,14 +121,14 @@ const AddCompanyQuestion = (props) => {
         navigate(`/companies-questions-list`);
       }
     } catch (error) {
-      console.error("Error adding question:", error);
-      toast.error("Failed to add question", { autoClose: 3000 });
+      toast.error(getErrorMessage(error, "Failed to add question"), { autoClose: 3000 });
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <React.Fragment>
-      <ToastContainer position="top-right" autoClose={5000} transition={Bounce} />
       <Row>
         <Col xl="6">
           <Card>
@@ -207,7 +197,7 @@ const AddCompanyQuestion = (props) => {
                 </Col>
               </Row>
 
-              <Button color="primary" className="mt-3" onClick={addQuestion}>
+              <Button color="primary" className="mt-3" onClick={addQuestion} disabled={submitting}>
                 Submit
               </Button>
             </CardBody>

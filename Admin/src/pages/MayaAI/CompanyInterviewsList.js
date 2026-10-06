@@ -1,179 +1,123 @@
-import React, { useEffect, useState } from "react"
-import { Row, Col, Card, CardBody, CardTitle, Button, Modal, ModalHeader, ModalBody, ModalFooter, Badge, Input } from "reactstrap";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Row, Col, Card, CardBody, CardTitle, Button, Badge, Input } from "reactstrap";
 import { connect } from "react-redux";
-import { Link, useNavigate } from "react-router-dom";
-import { setBreadcrumbItems } from "../../store/actions";
-import { MutatingDots } from "react-loader-spinner";
+import { Link } from "react-router-dom";
 import axios from "axios";
 import BootstrapTable from "react-bootstrap-table-next";
 import paginationFactory from "react-bootstrap-table2-paginator";
-import "./datatables.scss"
+import { toast } from "react-toastify";
+import { setBreadcrumbItems } from "../../store/actions";
+import { apiUrl, getErrorMessage } from "../../config/api";
+import { useAuth } from "../../context/AuthContext";
+import LoadState from "../../components/Common/LoadState";
+import ConfirmModal from "../../components/Common/ConfirmModal";
+import {
+  attemptedPercentage,
+  deleteResultMessage,
+  getYesterdayDateString,
+  studentReportUrl,
+} from "./interviewHelpers";
+import "./datatables.scss";
 
-const InterviewsList = (props) => {
-  document.title = "Company Interviews list | Technical Hub - All the list of Company Interviews";
+// map raw interviews to table rows
+const mapToRows = (arr) =>
+  (arr || []).map((interview) => ({
+    platform: interview.platform,
+    roll_no: interview.roll_no,
+    first_name: interview.first_name,
+    gender: interview.gender,
+    type: interview.type,
+    round: interview.round,
+    questions_count: interview.questions_count,
+    start_date_time: interview.start_date_time_ist || interview.start_date_time,
+    interview_status: interview.interview_status,
+    _id: interview._id,
+  }));
 
-  const breadcrumbItems = [
-    { title: "Technical Hub", link: "#" },
-    { title: "Maya Ai", link: "#" },
-    { title: "Company Interviews List", link: "#" },
-  ];
-  const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+const CompanyInterviewsList = (props) => {
+  document.title = "Company Interviews List | Mpod";
+
+  const { user } = useAuth();
   const [interviewsData, setInterviewsData] = useState([]); // date-scoped data from server
-  const [filteredRows, setFilteredRows] = useState([]); // rows used by table after search/filter
-  const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-  const [selectedInterviewId, setSelectedInterviewId] = useState(null);
-  const [modal, setModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterDate, setFilterDate] = useState(""); // YYYY-MM-DD
-  const [loader, setLoader] = useState(true);
-
-  // counts
-  const [upcomingCount, setUpcomingCount] = useState(0);
-  const [attemptedCount, setAttemptedCount] = useState(0);
-  const [expiredCount, setExpiredCount] = useState(0);
+  const [filterDate, setFilterDate] = useState(getYesterdayDateString()); // YYYY-MM-DD
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [selectedInterviewId, setSelectedInterviewId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    fetchCurrentUserData();
-  }, []);
-  // useEffect(() => {
-  //   // load current user from localStorage (same as before)
-  //   const currentUser = JSON.parse(localStorage.getItem('authUser'));
-  //   if (currentUser) {
-  //     setUser(currentUser);
-  //   } else {
-  //     navigate("/login");
-  //   }
-  // }, [navigate]);
-  useEffect(() => {
-    props.setBreadcrumbItems('Maya AI', breadcrumbItems);
-    if (user) {
-      // set filterDate to yesterday and fetch
-      const yesterday = getYesterdayString();
-      setFilterDate(yesterday);
-      fetchInterviewsData(yesterday);
-    }
+    props.setBreadcrumbItems("Maya AI", [
+      { title: "Mpod", link: "#" },
+      { title: "Maya Ai", link: "#" },
+      { title: "Company Interviews List", link: "#" },
+    ]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, []);
 
-  // helper to get YYYY-MM-DD for yesterday
-  const getYesterdayString = () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
-  };
-
-  const fetchCurrentUserData = async () => {
-    try {
-      const response = await axios.get(backendUrl + "get-admin-current-user");
-      if (response.data) {
-        setUser(response.data);
-      } else {
-        navigate("/login");
-      }
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      navigate("/login");
-    }
-  };
-
-  // fetch interviews for a date (YYYY-MM-DD). if dateParam falsy, backend defaults to yesterday.
-  const fetchInterviewsData = async (dateParam) => {
-    try {
-      setLoader(true);
-      const url = `${backendUrl}get-company-interviews/${user.t_id}`;
-      const res = await axios.get(url, { params: dateParam ? { date: dateParam } : {} });
-      if (res.status === 200) {
-        setInterviewsData(res.data || []);
-        // compute initial filtered rows (before search)
-        const mapped = mapToRows(res.data || []);
-        setFilteredRows(mapped);
-      } else {
+  // fetch interviews for a date (YYYY-MM-DD)
+  const fetchInterviewsData = useCallback(
+    async (dateParam) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await axios.get(apiUrl(`get-company-interviews/${user.t_id}`), {
+          params: dateParam ? { date: dateParam } : {},
+        });
+        setInterviewsData(Array.isArray(res.data) ? res.data : []);
+      } catch (err) {
         setInterviewsData([]);
-        setFilteredRows([]);
+        setError(getErrorMessage(err, "Failed to load company interviews."));
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      setInterviewsData([]);
-      setFilteredRows([]);
-    } finally {
-      setLoader(false);
-    }
-  };
+    },
+    [user.t_id]
+  );
 
-  // map raw interviews to table rows
-  const mapToRows = (arr) => {
-    return (arr || []).map(interview => ({
-      platform: interview.platform,
-      roll_no: interview.roll_no,
-      first_name: interview.first_name,
-      gender: interview.gender,
-      type: interview.type,
-      round: interview.round,
-      questions_count: interview.questions_count,
-      start_date_time: interview.start_date_time_ist || interview.start_date_time,
-      interview_status: interview.interview_status,
-      _id: interview._id
-    }));
-  };
-
-  // handle date change: request that specific date from server
-  const handleDateChange = (e) => {
-    const val = e.target.value; // YYYY-MM-DD or ""
-    if (!val) {
-      // if cleared, default to yesterday
-      const yesterday = getYesterdayString();
-      setFilterDate("");
-      fetchInterviewsData(yesterday);
-    } else {
-      setFilterDate(val);
-      fetchInterviewsData(val);
-    }
-  };
-
-  // handle search; apply on interviewsData (already date-scoped)
   useEffect(() => {
+    fetchInterviewsData(filterDate || getYesterdayDateString());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchInterviewsData]);
+
+  // handle date change: request that specific date from server (cleared -> yesterday)
+  const handleDateChange = (e) => {
+    const val = e.target.value;
+    setFilterDate(val || "");
+    fetchInterviewsData(val || getYesterdayDateString());
+  };
+
+  // search applies on interviewsData (already date-scoped)
+  const filteredRows = useMemo(() => {
     const term = (searchTerm || "").trim().toLowerCase();
-    if (!term) {
-      setFilteredRows(mapToRows(interviewsData));
-      return;
-    }
-    const filtered = (interviewsData || []).filter(interview =>
-      (interview.first_name || "").toLowerCase().includes(term) ||
-      String(interview.roll_no || "").toLowerCase().includes(term) ||
-      (interview.platform || "").toLowerCase().includes(term)
-    );
-    setFilteredRows(mapToRows(filtered));
+    const filtered = !term
+      ? interviewsData
+      : interviewsData.filter(
+          (interview) =>
+            (interview.first_name || "").toLowerCase().includes(term) ||
+            String(interview.roll_no || "").toLowerCase().includes(term) ||
+            (interview.platform || "").toLowerCase().includes(term)
+        );
+    return mapToRows(filtered);
   }, [searchTerm, interviewsData]);
 
-  // counts update when interviewsData changes (date-scoped results)
-  useEffect(() => {
-    const u = (interviewsData || []).filter(i => i.interview_status === "Upcoming").length;
-    const a = (interviewsData || []).filter(i => i.interview_status === "Attempted").length;
-    const e = (interviewsData || []).filter(i => i.interview_status === "Expired").length;
-    setUpcomingCount(u);
-    setAttemptedCount(a);
-    setExpiredCount(e);
-  }, [interviewsData]);
-
-  const handleDeleteClick = (id) => {
-    setSelectedInterviewId(id);
-    setModal(true);
-  };
+  // counts use the date-scoped results
+  const upcomingCount = interviewsData.filter((i) => i.interview_status === "Upcoming").length;
+  const attemptedCount = interviewsData.filter((i) => i.interview_status === "Attempted").length;
+  const expiredCount = interviewsData.filter((i) => i.interview_status === "Expired").length;
 
   const confirmDeleteInterview = async () => {
+    setDeleting(true);
     try {
-      await axios.delete(`${backendUrl}delete-company-interviewee-details/${selectedInterviewId}`);
-      const newData = interviewsData.filter((interview) => interview._id !== selectedInterviewId);
-      setInterviewsData(newData);
-      setFilteredRows(mapToRows(newData));
-      setModal(false);
-    } catch (error) {
-      console.error("Error deleting interview:", error);
-      setModal(false);
+      const res = await axios.delete(apiUrl(`delete-company-interviewee-details/${selectedInterviewId}`));
+      const deletedId = selectedInterviewId;
+      setInterviewsData((prev) => prev.filter((interview) => interview._id !== deletedId));
+      setSelectedInterviewId(null);
+      toast.success(deleteResultMessage(res.data));
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to delete interview."));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -187,28 +131,40 @@ const InterviewsList = (props) => {
     { dataField: "questions_count", text: "No of Questions", sort: true },
     { dataField: "start_date_time", text: "Start Date & Time", sort: true },
     {
-      dataField: "interview_status", text: "Status", sort: true, formatter: (cell) => (
-        <Badge color={
-          cell === "Attempted" ? "success" :
-            cell === "Expired" ? "danger" : "warning"
-        } pill>
+      dataField: "interview_status",
+      text: "Status",
+      sort: true,
+      formatter: (cell) => (
+        <Badge color={cell === "Attempted" ? "success" : cell === "Expired" ? "danger" : "warning"} pill>
           {cell}
         </Badge>
-      )
+      ),
     },
     {
-      dataField: "actions", text: "Actions", sort: false, formatter: (cell, interview) => {
-        return interview.interview_status === "Attempted" ? (
-          <a href={`https://mpod.ai/report?roll_no=${interview.roll_no}&interview_type=company&id=${interview._id}`} className="btn btn-info btn-sm me-2">
+      dataField: "actions",
+      text: "Actions",
+      sort: false,
+      isDummyField: true,
+      formatter: (cell, interview) =>
+        interview.interview_status === "Attempted" ? (
+          <a
+            href={studentReportUrl("report", {
+              roll_no: interview.roll_no,
+              interview_type: "company",
+              id: interview._id,
+            })}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-info btn-sm me-2"
+          >
             View
           </a>
         ) : (
-          <Button color="danger" size="sm" onClick={() => handleDeleteClick(interview._id)}>
+          <Button color="danger" size="sm" onClick={() => setSelectedInterviewId(interview._id)}>
             Delete
           </Button>
-        );
-      }
-    }
+        ),
+    },
   ];
 
   return (
@@ -217,10 +173,10 @@ const InterviewsList = (props) => {
         <Col className="col-12">
           <Card>
             <CardBody className="d-flex justify-content-between align-items-center">
-              <CardTitle className="h4">{user && user.organization}-Company Interviews List</CardTitle>
-              <a href="/admin/add-company-interview">
-                <Button type="button" color="primary" className="waves-effect waves-light">ADD INTERVIEW</Button>
-              </a>
+              <CardTitle className="h4">{user.organization} - Company Interviews List</CardTitle>
+              <Link to="/add-company-interview" className="btn btn-primary waves-effect waves-light">
+                ADD INTERVIEW
+              </Link>
             </CardBody>
 
             <CardBody>
@@ -307,7 +263,7 @@ const InterviewsList = (props) => {
                   >
                     <div style={{ fontSize: "11px", color: "#555" }}>Percentage</div>
                     <div style={{ fontSize: "17px", fontWeight: "700", color: "#fd8f00ff" }}>
-                      {attemptedCount / (attemptedCount + expiredCount) * 100 ? (attemptedCount / (attemptedCount + expiredCount) * 100).toFixed(2) : 0}%
+                      {attemptedPercentage(attemptedCount, expiredCount)}%
                     </div>
                   </div>
                 </Col>
@@ -334,55 +290,36 @@ const InterviewsList = (props) => {
                 </Col>
               </Row>
 
-              {/* --- Table / loader --- */}
-              {
-                !loader ? (
-                  filteredRows.length !== 0 ? (
-                    <BootstrapTable
-                      bootstrap4
-                      keyField="_id"
-                      columns={columns}
-                      data={filteredRows}
-                      pagination={paginationFactory()}
-                    />
-                  ) : (
-                    <div className="text-center py-4">
-                      No interviews found for selected date.
-                    </div>
-                  )
-                ) : (
-                  <div className="row">
-                    <div className="col-md-2 offset-5">
-                      <MutatingDots
-                        visible={true}
-                        height="100"
-                        width="100"
-                        color="#2B3A4A"
-                        secondaryColor="#2B3A4A"
-                        radius="12.5"
-                        ariaLabel="mutating-dots-loading"
-                      />
-                    </div>
-                  </div>
-                )
-              }
+              <LoadState
+                loading={loading}
+                error={error}
+                empty={!filteredRows.length}
+                emptyText="No interviews found for selected date."
+                onRetry={() => fetchInterviewsData(filterDate || getYesterdayDateString())}
+              >
+                <BootstrapTable
+                  bootstrap4
+                  keyField="_id"
+                  columns={columns}
+                  data={filteredRows}
+                  pagination={paginationFactory()}
+                />
+              </LoadState>
             </CardBody>
           </Card>
         </Col>
       </Row>
 
-      <Modal isOpen={modal} toggle={() => setModal(!modal)}>
-        <ModalHeader toggle={() => setModal(!modal)}>Confirm Deletion</ModalHeader>
-        <ModalBody>
-          Are you sure you want to delete this interview?
-        </ModalBody>
-        <ModalFooter>
-          <Button color="danger" onClick={confirmDeleteInterview}>Delete</Button>
-          <Button color="secondary" onClick={() => setModal(false)}>Cancel</Button>
-        </ModalFooter>
-      </Modal>
+      <ConfirmModal
+        isOpen={!!selectedInterviewId}
+        toggle={() => setSelectedInterviewId(null)}
+        onConfirm={confirmDeleteInterview}
+        title="Confirm Deletion"
+        message="Are you sure you want to delete this interview?"
+        busy={deleting}
+      />
     </React.Fragment>
   );
 };
 
-export default connect(null, { setBreadcrumbItems })(InterviewsList);
+export default connect(null, { setBreadcrumbItems })(CompanyInterviewsList);

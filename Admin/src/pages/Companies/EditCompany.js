@@ -1,185 +1,121 @@
-import React, { useEffect, useState } from "react";
-import {
-    Row,
-    Col,
-    Card,
-    CardBody,
-    FormGroup,
-    Button,
-    Input,
-    CardTitle,
-    Label,
-} from "reactstrap";
-import { AvForm, AvField } from "availity-reactstrap-validation";
-import { connect } from "react-redux";
-import { setBreadcrumbItems } from "../../store/actions";
-import axios from "axios";
-import Switch from "react-switch"
-import { useParams, useNavigate } from "react-router-dom";
-import { ToastContainer, toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import React, { useEffect, useState } from "react"
+import { Row, Col, Card, CardBody, FormGroup, Button, Input, Label, Spinner } from "reactstrap"
+import { connect } from "react-redux"
+import axios from "axios"
+import { useParams, useNavigate } from "react-router-dom"
+import { toast } from "react-toastify"
+import { setBreadcrumbItems } from "../../store/actions"
+import { apiUrl, getErrorMessage } from "../../config/api"
+import LoadState from "../../components/Common/LoadState"
 
+const EditCompany = props => {
+  document.title = "Edit Company | Mpod"
 
+  const { companyId } = useParams()
+  const navigate = useNavigate()
 
-const EditFRSDevice = (props) => {
-    let currentTime = new Date();
-    let curr_date_time = currentTime.toLocaleString('en-US', {
-        timeZone: 'Asia/Kolkata',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-    })
+  const [data, setData] = useState({ company_name: "" })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
 
-
-    document.title = "Technical Hub | Edit device";
-
+  useEffect(() => {
     const breadcrumbItems = [
-        { title: "TechnicalHub", link: "#" },
-        { title: "Devices", link: "#" },
-        { title: "Edit Device", link: "#" },
-    ];
+      { title: "Mpod", link: "#" },
+      { title: "Companies", link: "/companies-list" },
+      { title: "Edit Company", link: "#" },
+    ]
+    props.setBreadcrumbItems("Edit Company", breadcrumbItems)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-    useEffect(() => {
-        props.setBreadcrumbItems('Edit Device', breadcrumbItems);
-    }, []);
+  const fetchCompany = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await axios.get(apiUrl(`get-company/${companyId}`))
+      if (!response.data) {
+        setError("Company not found.")
+      } else {
+        setData(response.data)
+      }
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to load company."))
+    } finally {
+      setLoading(false)
+    }
+  }
 
-    const params = useParams();
-    const axiosAPI = axios.create()
-    const [formErrors, setFormErrors] = useState();
-    const [data, setData] = useState({
-        "company_name": "",
-        "added_date": "",
-        "update_date": "",
-        "added_by": "",
-        "status": ""
-    });
-    const [courses, setCourses] = useState([])
-    const [loading, setLoading] = useState(false)
-    // useEffect(() => {
-    //     setLoading(true)
-    //     const baseURL = `${process.env.REACT_APP_DATABASEURL}courses-list`;
+  useEffect(() => {
+    fetchCompany()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId])
 
-    //     axiosAPI.get(baseURL)
-    //         .then((response) => setCourses(response.data['courses']))
-    //         .finally(() => {
-    //             setLoading(false)
-    //         })
-    // }, [])
-
-    // useEffect(() => {
-    //     let authUser = JSON.parse(localStorage.getItem('authUser'));
-    //     if (authUser.role == 'admin' || authUser.role == 'superadmin' ) {
-    //     }
-    //     else {
-    //       alert("your not autherized")
-    //       localStorage.clear();
-    //       window.location.href = '/admin/login';
-    //     }
-    //   }, []);
-
-    useEffect(() => {
-        setLoading(true)
-        const baseURL = `${process.env.REACT_APP_BACKEND_URL}get-company/` + params.id;
-
-        axiosAPI.get(baseURL)
-            .then((response) => {
-                if (response.status == 200) {
-                    console.log(response.data);
-                    console.log(response.data.company_name)
-                    setData(response.data)
-                }
-            }).catch((err) => {
-                console.log(err)
-            })
-        // .finally(() => {
-        //     setLoading(false)
-        // })
-    }, [])
-
-
-    const updateData = (e) => {
-        setData({
-            ...data,
-            [e.target.name]: e.target.value
-        })
+  const editCompanySubmit = async e => {
+    if (e) e.preventDefault()
+    if (!data.company_name || !data.company_name.trim()) {
+      toast.error("Company name is required")
+      return
     }
 
-    const navigate = useNavigate();
-
-
-
-    const EditCompanySubmit = () => {
-
-
-
-        data.status = 1;
-        data.update_date = new Date();
-        data.added_by = "tester";
-        const baseURL = `${process.env.REACT_APP_BACKEND_URL}update-company/` + params.id;
-
-        axiosAPI.put(baseURL, data
-        ).then((res) => {
-            if (res.status == 200) {
-                toast.success('Company Updated', {
-                    position: "top-right",
-                    hideProgressBar: false,
-                    closeOnClick: true,
-                    pauseOnHover: true,
-                });
-                // navigate("/companies-list");
-            }
-        }).catch((err) => console.log(err))
-
-
-    }
-    //for change tooltip display propery
-    function changeHandeler(event, eleId) {
-        if (event.target.value !== "")
-            document.getElementById(eleId).style.display = "none";
-        else document.getElementById(eleId).style.display = "block";
+    // Backend overwrites every field it receives, so send the existing values back.
+    const payload = {
+      company_name: data.company_name.trim(),
+      added_date: data.added_date,
+      update_date: new Date(),
+      added_by: data.added_by,
+      status: data.status ?? 1,
     }
 
+    setSaving(true)
+    try {
+      await axios.put(apiUrl(`update-company/${companyId}`), payload)
+      toast.success("Company updated")
+      navigate("/companies-list")
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Company not updated"))
+    } finally {
+      setSaving(false)
+    }
+  }
 
-    return (
-        <React.Fragment>
-            <Row>
-                <Col xl="6">
-                    <Card>
-                        <CardBody>
-                            <h4 className="card-title">Edit Company</h4>
+  return (
+    <React.Fragment>
+      <Row>
+        <Col xl="6">
+          <Card>
+            <CardBody>
+              <h4 className="card-title">Edit Company</h4>
+              <LoadState loading={loading} error={error} onRetry={fetchCompany}>
+                <form className="needs-validation" onSubmit={editCompanySubmit}>
+                  <Row>
+                    <Col md="6">
+                      <FormGroup className="mb-3">
+                        <Label htmlFor="company_name">Company Name</Label>
+                        <Input
+                          name="company_name"
+                          placeholder="Enter Company Name"
+                          type="text"
+                          className="form-control"
+                          id="company_name"
+                          onChange={e => setData({ ...data, company_name: e.target.value })}
+                          value={data.company_name || ""}
+                        />
+                      </FormGroup>
+                    </Col>
+                  </Row>
+                  <Button color="primary" type="submit" disabled={saving}>
+                    {saving && <Spinner size="sm" className="me-1" />}
+                    Submit
+                  </Button>
+                </form>
+              </LoadState>
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
+    </React.Fragment>
+  )
+}
 
-                            <AvForm className="needs-validation">
-                                <Row>
-                                    <Col md="6">
-                                        <FormGroup className="mb-3">
-                                            <Label htmlFor="validationCustom01">Tag Name</Label>
-                                            <Input
-                                                name="tag_name"
-                                                placeholder="Enter Tag Name"
-                                                type="text"
-                                                className="form-control"
-                                                id="validationCustom01"
-                                                onChange={updateData}
-                                                value={data.tag_name}
-                                            />
-                                        </FormGroup>
-                                    </Col>
-
-                                </Row>
-                                <Button color="primary" type="button" onClick={EditCompanySubmit}>
-                                    Submit
-                                </Button>
-                            </AvForm>
-                        </CardBody>
-                    </Card>
-                </Col>
-            </Row>
-        </React.Fragment>
-    );
-};
-
-export default connect(null, { setBreadcrumbItems })(EditFRSDevice);
+export default connect(null, { setBreadcrumbItems })(EditCompany)

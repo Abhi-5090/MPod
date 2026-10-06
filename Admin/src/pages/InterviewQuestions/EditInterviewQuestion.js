@@ -8,15 +8,17 @@ import {
   Label,
 } from "reactstrap";
 import { AvForm, AvField } from "availity-reactstrap-validation";
+import { toast } from "react-toastify";
 import { connect } from "react-redux";
 import { setBreadcrumbItems } from "../../store/actions";
 import axios from "axios";
 import Switch from "react-switch";
 import { useParams, useNavigate } from "react-router-dom";
 import Select from "react-select";
+import { apiUrl, getErrorMessage } from "../../config/api";
 
-const EditTopic = (props) => {
-  document.title = "Technical Hub | Edit Interview Question";
+const EditInterviewQuestion = (props) => {
+  document.title = "Edit Interview Question | Mpod";
 
   const [data, setData] = useState({});
   const [switch3, setswitch3] = useState(true);
@@ -27,61 +29,45 @@ const EditTopic = (props) => {
 
   const navigate = useNavigate();
   const { questionId } = useParams();
-  const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
 
   useEffect(() => {
     props.setBreadcrumbItems('Edit Interview Question', [
-      { title: "TechnicalHub", link: "#" },
-      { title: "Interview Questions", link: "#" },
+      { title: "Mpod", link: "#" },
+      { title: "Interview Questions", link: "/interview-questions-list" },
       { title: "Edit Interview Question", link: "#" },
     ]);
-    fetchTechnologyData();
-    fetchCompaniesData();
+    loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questionId]);
 
-  }, []);
-  useEffect(() => {
-    if (technologyData.length > 0 && companyData.length > 0) {
-      fetchTopicData();
+  // Load lookups and the question together so the question loads even if a lookup list is empty.
+  const loadAll = async () => {
+    const [techRes, compRes, questionRes] = await Promise.allSettled([
+      axios.get(apiUrl("get-technologies")),
+      axios.get(apiUrl("companies-list")),
+      axios.get(apiUrl(`get-interview-question-by-id/${questionId}`)),
+    ]);
+
+    const technologies = techRes.status === "fulfilled" && Array.isArray(techRes.value.data) ? techRes.value.data : [];
+    const companies = compRes.status === "fulfilled" && Array.isArray(compRes.value.data) ? compRes.value.data : [];
+    setTechnologyData(technologies);
+    setCompanyData(companies);
+    if (techRes.status === "rejected") toast.error(getErrorMessage(techRes.reason, "Failed to load technologies."));
+    if (compRes.status === "rejected") toast.error(getErrorMessage(compRes.reason, "Failed to load companies."));
+
+    if (questionRes.status === "rejected") {
+      toast.error(getErrorMessage(questionRes.reason, "Failed to load interview question."));
+      return;
     }
-  }, [technologyData, companyData]);
-  const fetchTechnologyData = async () => {
-    try {
-      const res = await axios.get(`${backendUrl}get-technologies`);
-      if (res.status === 200) setTechnologyData(res.data);
-    } catch (err) {
-      console.error("Error fetching technologies", err);
-    }
-  };
+    const topic = questionRes.value.data || {};
+    setData(topic);
+    setswitch3(topic.previous_asked_status === 1);
 
-  const fetchCompaniesData = async () => {
-    try {
-      const res = await axios.get(`${backendUrl}companies-list`);
-      if (res.status === 200) setCompanyData(res.data);
-    } catch (err) {
-      console.error("Error fetching companies", err);
-    }
-  };
+    const tech = technologies.find(t => t._id === topic.technology);
+    if (tech) setselectedTechnologyGroup({ label: tech.technology_name, value: tech._id });
 
-  const fetchTopicData = async () => {
-    try {
-      const res = await axios.get(`${backendUrl}get-interview-question-by-id/${questionId}`);
-      if (res.status === 200) {
-        const topic = res.data;
-        console.log(topic.technology)
-        console.log(technologyData)
-        setData(topic);
-        setswitch3(topic.previous_asked_status === 1);
-
-        const tech = technologyData.find(t => t._id === topic.technology);
-        console.log(tech)
-        if (tech) setselectedTechnologyGroup({ label: tech.technology_name, value: tech._id });
-
-        const company = companyData.find(c => c._id === topic.company);
-        if (company) setselectedCompanyGroup({ label: company.company_name, value: company._id });
-      }
-    } catch (err) {
-      console.error("Error fetching topic data", err);
-    }
+    const company = companies.find(c => c._id === topic.company);
+    if (company) setselectedCompanyGroup({ label: company.company_name, value: company._id });
   };
 
   const handleChange = (e) => {
@@ -98,15 +84,14 @@ const EditTopic = (props) => {
       technology: selectedTechnologyGroup?.value || "",
       status: newStatus,
     };
-    console.log(payload)
     try {
-      const res = await axios.post(`${backendUrl}update-interview-question`, payload);
+      const res = await axios.post(apiUrl("update-interview-question"), payload);
       if (res.status === 200) {
-        alert("Updated Successfully");
+        toast.success("Updated Successfully");
         navigate("/interview-questions-list");
       }
     } catch (err) {
-      console.error("Error updating topic", err);
+      toast.error(getErrorMessage(err, "Failed to update interview question."));
     }
   };
 
@@ -213,4 +198,4 @@ const EditTopic = (props) => {
   );
 };
 
-export default connect(null, { setBreadcrumbItems })(EditTopic);
+export default connect(null, { setBreadcrumbItems })(EditInterviewQuestion);

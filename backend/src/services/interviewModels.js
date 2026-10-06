@@ -42,6 +42,9 @@ async function tenantOfInterview(doc) {
 async function assertInterviewAccess(req, doc) {
   const a = req.auth;
   if (!doc) throw notFound("Interview not found.");
+  // Read access granted by the attempt token of this very interview (kiosk report screen).
+  if (req.attemptAccessId && req.attemptAccessId === String(doc._id)) return;
+  if (!a) throw forbidden();
   if (a.kind === "staff" && a.isPlatform) return;
   if (a.kind === "student") {
     if (doc.roll_no !== a.user.roll_no) throw notFound("Interview not found.");

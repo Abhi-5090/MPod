@@ -1,24 +1,29 @@
-import React from "react";
-import ReactDOM from 'react-dom/client';
-import App from "./App";
-import * as serviceWorker from "./serviceWorker";
-import { BrowserRouter } from "react-router-dom";
-import "./i18n";
-import { Provider } from "react-redux";
-import store from "./store";
+import React from "react"
+import ReactDOM from "react-dom/client"
+import { BrowserRouter } from "react-router-dom"
+import { Provider } from "react-redux"
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
+import App from "./App"
+import * as serviceWorker from "./serviceWorker"
+import "./i18n"
+import store from "./store"
+import setupAxios from "./api/setupAxios"
+import { AuthProvider } from "./context/AuthContext"
 
-const publicUrl = process.env.REACT_APP_PUBLIC_URL || "";
+// Must run before any request: sends the httpOnly `adminSessionToken` cookie
+// and installs the global 401/403 handling.
+setupAxios()
 
-console.log(publicUrl);
+const root = ReactDOM.createRoot(document.getElementById("root"))
 
 root.render(
   <Provider store={store}>
     <BrowserRouter basename={"/admin"}>
-      <App />
+      <AuthProvider>
+        <App />
+      </AuthProvider>
     </BrowserRouter>
   </Provider>
-);
+)
 
-serviceWorker.unregister();
+serviceWorker.unregister()

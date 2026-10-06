@@ -12,18 +12,23 @@ import {
 } from "reactstrap";
 
 import Select from "react-select";
-import { ToastContainer, toast } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
+import { toast } from "react-toastify";
+import { connect } from "react-redux";
 import axios from "axios";
 import { Editor } from "react-draft-wysiwyg";
 import draftToHtml from "draftjs-to-html";
 import { EditorState, convertToRaw } from "draft-js";
 import "react-draft-wysiwyg/dist/react-draft-wysiwyg.css";
 import { useNavigate } from "react-router-dom";
-import axiosInstance from "../../api/axiosInstance";
+import { setBreadcrumbItems } from "../../store/actions";
+import { apiUrl, getErrorMessage } from "../../config/api";
+import { useAuth } from "../../context/AuthContext";
 
-const AddCodingQuestion = () => {
+const AddCodingQuestion = (props) => {
+  document.title = "Add Coding Question | Mpod";
+
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [problemName, setProblemName] = useState("");
   const [editorState, setEditorState] = useState(EditorState.createEmpty());
   const [inputEditorState, setInputEditorState] = useState(EditorState.createEmpty());
@@ -33,7 +38,7 @@ const AddCodingQuestion = () => {
   const [selectedTime, setSelectedTime] = useState(null);
   const [selectedCompany, setSelectedCompany] = useState(null);
   const [companyData, setCompanyData] = useState([]);
-  const [user, setUser] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const complexityOptions = [
     { label: "Easy", value: "easy" },
@@ -53,42 +58,26 @@ const AddCodingQuestion = () => {
       reader.onloadend = () => {
         resolve({ data: { link: reader.result } });
       };
+      reader.onerror = reject;
       reader.readAsDataURL(file);
     });
   };
   useEffect(() => {
+    props.setBreadcrumbItems("Add Coding Question", [
+      { title: "Mpod", link: "#" },
+      { title: "Coding Questions", link: "/coding-questions-list" },
+      { title: "Add Coding Question", link: "#" },
+    ]);
     fetchCompanyData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    fetchCurrentUserData();
-  }, []);
-
-  const fetchCurrentUserData = async () => {
-    try {
-      const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-
-      const response = await axios.get(backendUrl + "get-admin-current-user");
-      if (response.data) {
-        setUser(response.data);
-      } else {
-        navigate("/login");
-      }
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      navigate("/login");
-    }
-  };
 
   const fetchCompanyData = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
     try {
-      const response = await axios.get(backendUrl + "companies-list");
-      if (response.status === 200) {
-        setCompanyData(response.data);
-      }
+      const response = await axios.get(apiUrl("companies-list"));
+      setCompanyData(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
-      console.error("Error fetching data:", error);
+      toast.error(getErrorMessage(error, "Failed to load companies."));
     }
   };
 
@@ -115,19 +104,18 @@ const AddCodingQuestion = () => {
       added_by: user?.roll_no || "Unknown",
     };
 
+    setSubmitting(true);
     try {
-      const response = await axios.post(
-        process.env.REACT_APP_MPOD_BACKEND_URL + "add-coding-question",
-        data
-      );
+      const response = await axios.post(apiUrl("add-coding-question"), data);
 
       if (response.status === 200) {
         toast.success("Question added successfully", { autoClose: 3000 });
         navigate("/coding-questions-list");
       }
     } catch (error) {
-      console.error("Error adding question:", error);
-      toast.error("Failed to add question", { autoClose: 3000 });
+      toast.error(getErrorMessage(error, "Failed to add question"), { autoClose: 3000 });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -228,7 +216,7 @@ const AddCodingQuestion = () => {
                   }}
                 />
 
-                <Button color="primary" className="mt-3" onClick={addQuestion}>
+                <Button color="primary" className="mt-3" onClick={addQuestion} disabled={submitting}>
                   Submit
                 </Button>
               </Form>
@@ -236,9 +224,8 @@ const AddCodingQuestion = () => {
           </Card>
         </Col>
       </Row>
-      <ToastContainer />
     </React.Fragment>
   );
 };
 
-export default AddCodingQuestion;
+export default connect(null, { setBreadcrumbItems })(AddCodingQuestion);

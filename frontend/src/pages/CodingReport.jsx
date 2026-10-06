@@ -1,17 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import '../scss/components/section.scss';
 import Header from '.././components/header/header.jsx';
-import * as echarts from 'echarts';
 import { Accordion } from 'react-bootstrap-accordion';
 import { CircularProgressbar, buildStyles } from 'react-circular-progressbar';
 import 'react-circular-progressbar/dist/styles.css';
 import generatePDF from "react-to-pdf";
 import { useSearchParams } from 'react-router-dom';
-import axios from "axios";
+import DOMPurify from "dompurify";
 
 import logo from '../assets/images/logo/mayalogo.png'
 import { AiOutlineDownload } from "react-icons/ai";
-import axiosInstance from "../api/axiosInstance";
+import axiosInstance, { attemptTokenFor, forgetAttemptTokens } from "../api/axiosInstance";
 
 
 function CodingReport(props) {
@@ -27,9 +26,7 @@ function CodingReport(props) {
     const [accuracyAverage, setAccuracyAverage] = useState(0);
     const [totalDuration, setTotalDuration] = useState();
     const [loading, setLoading] = useState(true);
-    let intervieweeDetails;
     const frontendUrl = process.env.REACT_APP_PUBLIC_FRONTEND_URL;
-    intervieweeDetails = JSON.parse(localStorage.getItem('intervieweeDetails'));
     const [imageUrl, setImageUrl] = useState()
     const [emotions, setEmotions] = useState()
     const [imageLoaded, setImageLoaded] = useState(false);
@@ -63,7 +60,6 @@ function CodingReport(props) {
     const getTargetElement = () => document.getElementById("container");
     const downloadPdf = () => {
         if (imageLoaded && roll_no) {
-            console.log(imageUrl)
             const container = document.getElementById("container");
 
             // Temporarily show content for PDF generation
@@ -107,10 +103,9 @@ function CodingReport(props) {
     const [startDate, setStartDate] = useState()
     useEffect(() => {
         setLoading(true); // Start loading
-        axiosInstance.get("get-coding-report-details/" + id + "/" + interview_type + "/" + roll_no)
+        axiosInstance.get("get-coding-report-details/" + encodeURIComponent(id) + "/" + encodeURIComponent(interview_type) + "/" + encodeURIComponent(roll_no), { headers: attemptTokenFor(id) ? { "X-Attempt-Token": attemptTokenFor(id) } : {} })
             .then((response) => {
                 if (response.data) {
-                    console.log(response.data)
                     setQna(response.data.question_details);
                     setUser(response.data.user_details)
                     setEmotions(response.data.emotions[0]);
@@ -145,9 +140,12 @@ function CodingReport(props) {
     // if (!emotions || Object.keys(emotions).length === 0) {
     //     return <div>Emotion data not available. Please try again later.</div>;
     // }
-    const onSelectTab = () => {
-        alert('alsdfjk')
-    }
+    const onSelectTab = () => {};
+    const kioskSession = Boolean(attemptTokenFor(id));
+    const finishKiosk = () => {
+        forgetAttemptTokens();
+        window.location.href = "/home-2";
+    };
     const formatHtmlText = (html) => {
         return html
             ?.replace(/<\/(p|li|br)>/gi, '\n')
@@ -176,11 +174,18 @@ function CodingReport(props) {
             .replace(/&gt;/g, '>')
             .replace(/<code>/g, '<code style="background:none;background-color:transparent;padding:0;border:none">');
 
-        return { __html: cleanedHtml };
+        return { __html: DOMPurify.sanitize(cleanedHtml) };
     };
     return (
         <div className='wrapper-style' id='wrapper'>
             {<Header />}
+            {kioskSession && (
+                <div style={{ position: "fixed", top: 120, right: 20, zIndex: 1000 }}>
+                    <button onClick={finishKiosk} style={{ padding: "10px 18px", background: "#008738", color: "#fff", border: "none", borderRadius: 6 }}>
+                        Done - next student
+                    </button>
+                </div>
+            )}
             <div className="tf-section flat-blog-details" style={{ padding: "60px" }}>
 
                 <div className="container" >
@@ -612,7 +617,7 @@ function CodingReport(props) {
 
                                                                                                         <div style={{ flex: 1, alignItems: 'center' }}>
                                                                                                             <p  >Memory Usage (KB):</p >
-                                                                                                            <span style={{ color: "#5EE3EC" }}>{item.optimized_result.memory_usage_kb} KB</span>
+                                                                                                            <span style={{ color: "#5EE3EC" }}>{item.optimized_result.memory_usage_kb != null ? `${item.optimized_result.memory_usage_kb} KB` : "N/A"}</span>
                                                                                                         </div>
                                                                                                     </div>
 
@@ -1103,7 +1108,7 @@ function CodingReport(props) {
 
                                                                                                                     <div style={{ flex: 1, alignItems: 'center' }}>
                                                                                                                         <p style={{ color: "#000" }}>Memory Usage (KB):</p >
-                                                                                                                        <span style={{ color: "#008738" }}>{item.optimized_result.memory_usage_kb} KB</span>
+                                                                                                                        <span style={{ color: "#008738" }}>{item.optimized_result.memory_usage_kb != null ? `${item.optimized_result.memory_usage_kb} KB` : "N/A"}</span>
                                                                                                                     </div>
                                                                                                                 </div>
 

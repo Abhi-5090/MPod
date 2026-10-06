@@ -1,149 +1,138 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import BootstrapTable from "react-bootstrap-table-next";
 import paginationFactory from "react-bootstrap-table2-paginator";
-import { Button, Badge, Card, CardBody, CardTitle, Modal, ModalHeader, ModalBody, ModalFooter, Row, Col, Input } from "reactstrap";
-import { useNavigate } from "react-router-dom";
-import { MutatingDots } from 'react-loader-spinner';
+import { Button, Badge, Card, CardBody, CardTitle, Row, Col, Input } from "reactstrap";
+import { Link } from "react-router-dom";
+import { connect } from "react-redux";
 import axios from "axios";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
-const InterviewsList = () => {
+import { toast } from "react-toastify";
+import { setBreadcrumbItems } from "../../store/actions";
+import { apiUrl, getErrorMessage } from "../../config/api";
+import { useAuth } from "../../context/AuthContext";
+import LoadState from "../../components/Common/LoadState";
+import ConfirmModal from "../../components/Common/ConfirmModal";
+import {
+  attemptedPercentage,
+  deleteResultMessage,
+  getYesterdayDateString,
+  studentReportUrl,
+} from "./interviewHelpers";
+
+const joinList = (value) => (Array.isArray(value) ? value.join(", ") : value || "");
+
+const InterviewsList = (props) => {
+  document.title = "Interviews List | Mpod";
+
+  const { user } = useAuth();
   const [interviewsData, setInterviewsData] = useState([]);
-  const [filteredData, setFilteredData] = useState([]);
-  const [user, setUser] = useState(null);
-  const [searchTerm, setSearchTerm] = useState(""); // New state for search term
-  const navigate = useNavigate();
-  const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-  const [modal, setModal] = useState(false);
-  const [selectedInterviewId, setSelectedInterviewId] = useState(null);
-  const [filterDate, setFilterDate] = useState(""); // Holds selected date
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterDate, setFilterDate] = useState(getYesterdayDateString()); // Holds selected date
   const [statusFilter, setStatusFilter] = useState("All");
   const [technologyFilter, setTechnologyFilter] = useState("All");
-  const [technologyOptions, setTechnologyOptions] = useState(["All"]);
-  const [loader, setLoader] = useState(true);
-const [upcomingCount, setUpcomingCount] = useState(0);
-  const [attemptedCount, setAttemptedCount] = useState(0);
-  const [expiredCount, setExpiredCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [selectedInterviewId, setSelectedInterviewId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
-  // helper: return YYYY-MM-DD for yesterday
-  const getYesterdayDateString = () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
-  };
   useEffect(() => {
-    fetchCurrentUserData();
+    props.setBreadcrumbItems("Interviews List", [
+      { title: "Mpod", link: "#" },
+      { title: "Maya Ai", link: "#" },
+      { title: "Interviews List", link: "#" },
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchCurrentUserData = async () => {
-    try {
-      const response = await axios.get(`${backendUrl}get-admin-current-user`);
-      if (response.data) {
-        setUser(response.data);
-      } else {
-        navigate("/login");
-      }
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      navigate("/login");
-    }
-  };
-
-  useEffect(() => {
-    if (user) fetchInterviewsData();
-  }, [user]);
-  useEffect(() => {
-    if (!user) return;
-    const yesterday = getYesterdayDateString();
-    // set the date input to yesterday (so UI shows it)
-    setFilterDate(yesterday);
-    fetchInterviewsData(yesterday);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
-  useEffect(() => {
-    const upcoming = filteredData.filter(i => i.interview_status === "Upcoming").length;
-    const attempted = filteredData.filter(i => i.interview_status === "Attempted").length;
-    const expired = filteredData.filter(i => i.interview_status === "Expired").length;
-
-    setUpcomingCount(upcoming);
-    setAttemptedCount(attempted);
-    setExpiredCount(expired);
-  }, [filteredData]);
-  // Fetch interviews for a specific date (YYYY-MM-DD). If date is falsy,
-  // backend will fall back to yesterday — but we always pass a date from UI.
-  const fetchInterviewsData = async (dateString) => {
-    try {
-      setLoader(true);
-      const url = `${backendUrl}get-all-interviewee-details/${user.t_id}`;
-      const res = await axios.get(url, {
-        params: dateString ? { date: dateString } : {}
-      });
-      if (res.status === 200) {
-        setInterviewsData(res.data);
-        setFilteredData(res.data); // base list to apply client-side filters
-        // compute technology options for the returned date
-        const uniqueTechnologies = ["All", ...Array.from(new Set(res.data.map((item) => item.technology_name).filter(Boolean)))];
-        setTechnologyOptions(uniqueTechnologies);
-      } else {
+  // Fetch interviews for a specific date (YYYY-MM-DD).
+  const fetchInterviewsData = useCallback(
+    async (dateString) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await axios.get(apiUrl(`get-all-interviewee-details/${user.t_id}`), {
+          params: dateString ? { date: dateString } : {},
+        });
+        setInterviewsData(Array.isArray(res.data) ? res.data : []);
+      } catch (err) {
         setInterviewsData([]);
-        setFilteredData([]);
-        setTechnologyOptions(["All"]);
+        setError(getErrorMessage(err, "Failed to load interviews."));
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error("Error fetching interviews:", err);
-      setInterviewsData([]);
-      setFilteredData([]);
-      setTechnologyOptions(["All"]);
-    } finally {
-      setLoader(false);
-    }
-  };
- // When user changes date input, fetch that date from server
+    },
+    [user.t_id]
+  );
+
+  useEffect(() => {
+    fetchInterviewsData(filterDate || getYesterdayDateString());
+    // Only on mount / tenant change; date changes fetch via handleDateChange.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchInterviewsData]);
+
+  // When user changes date input, fetch that date from server.
+  // If the date is cleared, yesterday is fetched again.
   const handleDateChange = (e) => {
-    const value = e.target.value; // YYYY-MM-DD or ""
-    // If user clears date, we'll fetch yesterday again (as requested)
-    const dateToRequest = value || getYesterdayDateString();
-    setFilterDate(value || ""); // keep empty if user cleared, but still request yesterday
-    fetchInterviewsData(dateToRequest);
+    const value = e.target.value;
+    setFilterDate(value || "");
+    fetchInterviewsData(value || getYesterdayDateString());
   };
-  // Filter interviews based on search term
-  const handleSearchChange = (e) => {
-    const term = e.target.value;
-    setSearchTerm(term);
 
-    if (term === "") {
-      setFilteredData(interviewsData); // Show all data if search is empty
-    } else {
-      const filtered = interviewsData.filter(
+  const technologyOptions = useMemo(
+    () => ["All", ...Array.from(new Set(interviewsData.map((item) => item.technology_name).filter(Boolean)))],
+    [interviewsData]
+  );
+
+  const filteredData = useMemo(() => {
+    let filtered = interviewsData;
+    if (filterDate) {
+      const selectedDate = new Date(filterDate).toDateString();
+      filtered = filtered.filter((interview) => {
+        if (!interview.start_date_time_ist) return true;
+        const interviewDate = new Date(
+          interview.start_date_time_ist.split(" ")[0].split("-").reverse().join("-")
+        );
+        return interviewDate.toDateString() === selectedDate;
+      });
+    }
+    if (statusFilter !== "All") {
+      filtered = filtered.filter((interview) => interview.interview_status === statusFilter);
+    }
+    if (technologyFilter !== "All") {
+      filtered = filtered.filter((interview) => interview.technology_name === technologyFilter);
+    }
+    const term = searchTerm.trim().toLowerCase();
+    if (term) {
+      filtered = filtered.filter(
         (interview) =>
-          interview.platform.toLowerCase().includes(term) ||
-          interview.roll_no.toString().includes(term) ||
-          interview.first_name.toLowerCase().includes(term)
+          (interview.platform || "").toLowerCase().includes(term) ||
+          String(interview.roll_no || "").toLowerCase().includes(term) ||
+          (interview.first_name || "").toLowerCase().includes(term)
       );
-      setFilteredData(filtered);
     }
-  };
-  const handleDeleteClick = (id) => {
-    setSelectedInterviewId(id);
-    setModal(true);
-  };
+    return filtered;
+  }, [interviewsData, filterDate, statusFilter, technologyFilter, searchTerm]);
+
+  const upcomingCount = filteredData.filter((i) => i.interview_status === "Upcoming").length;
+  const attemptedCount = filteredData.filter((i) => i.interview_status === "Attempted").length;
+  const expiredCount = filteredData.filter((i) => i.interview_status === "Expired").length;
+
   const confirmDeleteInterview = async () => {
+    setDeleting(true);
     try {
-      const res = await axios.delete(`${backendUrl}delete-interviewee-details/${selectedInterviewId}`);
-      if (res.status == 200) {
-        setFilteredData(interviewsData.filter((interview) => interview._id !== selectedInterviewId));
-
-        setModal(false);
-        window.location.href("/ai-interviews-list");
-      }
-
-    } catch (error) {
-      console.error("Error deleting interview:", error);
+      const res = await axios.delete(apiUrl(`delete-interviewee-details/${selectedInterviewId}`));
+      const deletedId = selectedInterviewId;
+      setInterviewsData((prev) => prev.filter((interview) => interview._id !== deletedId));
+      setSelectedInterviewId(null);
+      toast.success(deleteResultMessage(res.data));
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to delete interview."));
+    } finally {
+      setDeleting(false);
     }
   };
+
   const columns = [
     { dataField: "platform", text: "Platform", sort: true },
     { dataField: "roll_no", text: "Roll No", sort: true },
@@ -151,16 +140,8 @@ const [upcomingCount, setUpcomingCount] = useState(0);
     { dataField: "first_name", text: "Name", sort: true },
     { dataField: "gender", text: "Gender", sort: true },
     { dataField: "technology_name", text: "Technology", sort: true },
-    {
-      dataField: "module_name",
-      text: "Modules",
-      formatter: (cell) => cell.join(", "),
-    },
-    {
-      dataField: "topic_name",
-      text: "Topics",
-      formatter: (cell) => cell.join(", "),
-    },
+    { dataField: "module_name", text: "Modules", formatter: joinList },
+    { dataField: "topic_name", text: "Topics", formatter: joinList },
     { dataField: "level", text: "Level" },
     { dataField: "questions_count", text: "No of Questions" },
     { dataField: "start_date_time_ist", text: "Start Date & Time" },
@@ -173,77 +154,47 @@ const [upcomingCount, setUpcomingCount] = useState(0);
         </Badge>
       ),
     },
-    {
-      dataField: "average_accuracy",
-      text: "Total Accuracy",
-      // formatter: (cell, interview) => (
-      //   interview.interview_status === "Attempted" ? `${interview.question_details.reduce((acc, curr) => acc + (curr.accuracy || 0), 0).toFixed(0) / interview.questions_count}%` : "N/A"
-      // ),
-    },
+    { dataField: "average_accuracy", text: "Total Accuracy" },
     {
       dataField: "actions",
       text: "Actions",
-      formatter: (cell, interview) => {
-        return interview.interview_status === "Attempted" ? (
+      isDummyField: true,
+      formatter: (cell, interview) =>
+        interview.interview_status === "Attempted" ? (
           <a
-            href={`https://mpod.ai/report?roll_no=${interview.roll_no}&interview_type=ai generated&id=${interview._id}`}
-            // target="_blank"
+            href={studentReportUrl("report", {
+              roll_no: interview.roll_no,
+              interview_type: "ai generated",
+              id: interview._id,
+            })}
+            target="_blank"
             rel="noopener noreferrer"
             className="btn btn-info btn-sm me-2"
           >
             View
           </a>
         ) : (
-          <Button color="danger" size="sm" onClick={() => handleDeleteClick(interview._id)}>
+          <Button color="danger" size="sm" onClick={() => setSelectedInterviewId(interview._id)}>
             Delete
           </Button>
-        );
-      },
-    }
+        ),
+    },
   ];
-  useEffect(() => {
-    let filtered = interviewsData;
-    if (filterDate) {
-      filtered = filtered.filter((interview) => {
-        const interviewDate = new Date(
-          interview.start_date_time_ist.split(" ")[0].split("-").reverse().join("-")
-        );
-        const selectedDate = new Date(filterDate);
-        return interviewDate.toDateString() === selectedDate.toDateString();
-      });
-    }
-    
-    if (statusFilter !== "All") {
-      filtered = filtered.filter((interview) => interview.interview_status === statusFilter);
-    }
-    if (technologyFilter !== "All") {
-      filtered = filtered.filter((interview) => interview.technology_name === technologyFilter);
-    }
-    if (searchTerm.trim() !== "") {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter((interview) =>
-        interview.platform.toLowerCase().includes(term) ||
-        interview.roll_no.toString().toUpperCase().includes(searchTerm.toUpperCase()) ||
-        interview.first_name.toLowerCase().includes(term)
-      );
-    }
-    setFilteredData(filtered);
-  }, [filterDate, statusFilter, technologyFilter, searchTerm, interviewsData]);
+
   const downloadExcel = () => {
-    console.log(filteredData)
     const exportData = filteredData.map((item) => ({
       Platform: item.platform,
       "Roll No": item.roll_no,
-      "College":item.college,
+      College: item.college,
       Name: item.first_name,
       Gender: item.gender,
       Technology: item.technology_name,
-      Modules: item.module_name.join(", "),
-      Topics: item.topic_name.join(", "),
+      Modules: joinList(item.module_name),
+      Topics: joinList(item.topic_name),
       Level: item.level,
       "No of Questions": item.questions_count,
       "Start Date & Time": item.start_date_time_ist,
-      "Accuracy": item.average_accuracy,
+      Accuracy: item.average_accuracy,
       Status: item.interview_status,
     }));
 
@@ -255,20 +206,21 @@ const [upcomingCount, setUpcomingCount] = useState(0);
     const blob = new Blob([excelBuffer], { type: "application/octet-stream" });
     saveAs(blob, "InterviewsList.xlsx");
   };
+
   return (
     <React.Fragment>
       <Row>
         <Col xs="12">
           <Card>
             <CardBody className="d-flex justify-content-between align-items-center">
-              <CardTitle className="h4">{user?.organization} - Interview List</CardTitle>
+              <CardTitle className="h4">{user.organization} - Interview List</CardTitle>
               <div>
-                <Button color="success" onClick={downloadExcel} className="me-2">
+                <Button color="success" onClick={downloadExcel} className="me-2" disabled={!filteredData.length}>
                   Download Excel
                 </Button>
-                <Button color="primary" href="/admin/add-ai-interview">
+                <Link to="/add-ai-interview" className="btn btn-primary">
                   ADD INTERVIEW
-                </Button>
+                </Link>
               </div>
             </CardBody>
             <CardBody>
@@ -345,7 +297,7 @@ const [upcomingCount, setUpcomingCount] = useState(0);
                   >
                     <div style={{ fontSize: "11px", color: "#555" }}>Percentage</div>
                     <div style={{ fontSize: "17px", fontWeight: "700", color: "#fd8f00ff" }}>
-                      {attemptedCount / (attemptedCount + expiredCount) * 100 ? (attemptedCount / (attemptedCount + expiredCount) * 100).toFixed(2) : 0}%
+                      {attemptedPercentage(attemptedCount, expiredCount)}%
                     </div>
                   </div>
                 </Col>
@@ -358,7 +310,7 @@ const [upcomingCount, setUpcomingCount] = useState(0);
                   <Input
                     type="text"
                     value={searchTerm}
-                    onChange={handleSearchChange}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Search by platform, roll no, or name"
                   />
                 </Col>
@@ -397,45 +349,36 @@ const [upcomingCount, setUpcomingCount] = useState(0);
                   </Input>
                 </Col>
               </Row>
-              {loader ? (
-                <div className="d-flex justify-content-center">
-                  <MutatingDots
-                    height="100"
-                    width="100"
-                    color="rgba(83, 114, 209, 1)"
-                    secondaryColor="rgba(106, 141, 218, 1)"
-                    radius="12.5"
-                    ariaLabel="mutating-dots-loading"
-                    visible={true}
-                  />
-                </div>
-              ) : (
+              <LoadState
+                loading={loading}
+                error={error}
+                empty={!filteredData.length}
+                emptyText="No interviews found"
+                onRetry={() => fetchInterviewsData(filterDate || getYesterdayDateString())}
+              >
                 <BootstrapTable
                   keyField="_id"
                   data={filteredData}
                   columns={columns}
                   condensed
                   pagination={paginationFactory()}
-                  noDataIndication="No interviews found"
                 />
-              )}
+              </LoadState>
             </CardBody>
           </Card>
         </Col>
       </Row>
 
-      <Modal isOpen={modal} toggle={() => setModal(!modal)}>
-        <ModalHeader toggle={() => setModal(!modal)}>Confirm Deletion</ModalHeader>
-        <ModalBody>
-          Are you sure you want to delete this interview?
-        </ModalBody>
-        <ModalFooter>
-          <Button color="danger" onClick={confirmDeleteInterview}>Delete</Button>
-          <Button color="secondary" onClick={() => setModal(false)}>Cancel</Button>
-        </ModalFooter>
-      </Modal>
+      <ConfirmModal
+        isOpen={!!selectedInterviewId}
+        toggle={() => setSelectedInterviewId(null)}
+        onConfirm={confirmDeleteInterview}
+        title="Confirm Deletion"
+        message="Are you sure you want to delete this interview?"
+        busy={deleting}
+      />
     </React.Fragment>
   );
 };
 
-export default InterviewsList;
+export default connect(null, { setBreadcrumbItems })(InterviewsList);

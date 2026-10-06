@@ -1,23 +1,23 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
     Row,
     Col,
     Card,
-    CardBody,
     Spinner,
-    Table
+    Table,
+    Alert,
+    Button
 } from "reactstrap";
-import { connect } from "react-redux";
-import { setBreadcrumbItems } from "../../../store/actions";
-import "react-toastify/dist/ReactToastify.css";
 import "bootstrap/dist/css/bootstrap.min.css";
 import axios from "axios";
 import ReactApexChart from "react-apexcharts";
-const ApexChart = ({ stats }) => {
-    console.log(stats)
+import { apiUrl, getErrorMessage } from "../../../config/api";
 
+const asArray = value => (Array.isArray(value) ? value : []);
+
+const ApexChart = ({ stats }) => {
     const { categories, techData, codingData, companyData } =
-        prepareChartData(stats.technology, stats.coding, stats.company);
+        prepareChartData(asArray(stats.technology), asArray(stats.coding), asArray(stats.company));
     function prepareChartData(tech, coding, company) {
         const allDates = new Set();
 
@@ -81,116 +81,85 @@ const ApexChart = ({ stats }) => {
         </div>
     );
 };
-const StudentExplore = (props) => {
-    const styles = {
-        sectionTitle: { color: "#008738" },
-        dashboardContainer: {
-            padding: "10px",
-            width: "100%",
-            boxShadow: "0px 4px 12px rgba(0, 0, 0, 0.1)"
-        },
-        card: {
-            borderRadius: "10px",
-            boxShadow: "0px 4px 4px rgba(0, 0, 0, 0.3)"
-        },
-        problemsText: {
-            color: "#4caf50",
-            fontSize: "0.9rem",
-            marginBottom: 0,
-            textAlign: "center"
-        },
-        problemsCount: {
-            fontSize: "1.2rem",
-            color: "#5a5a5a",
-            textAlign: "center"
-        },
-        easy: { color: "#4caf50", margin: 0, fontSize: "0.85rem" },
-        medium: { color: "#ff9800", margin: 0, fontSize: "0.85rem" },
-        hard: { color: "#f44336", margin: 0, fontSize: "0.85rem" },
-        horizontalLine: {
-            borderTop: "3px solid #4caf50",
-            margin: "1rem 0"
-        }
-    };
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
+const styles = {
+    dashboardContainer: {
+        padding: "10px",
+        width: "100%",
+        boxShadow: "0px 4px 12px rgba(0, 0, 0, 0.1)"
+    },
+};
+
+const TotalSuperAdminStats = () => {
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [yesterdayAssignedStats, setYesterdayAssignedStats] = useState();
     const [yesterdayAttemptedStats, setYesterdayAttemptedStats] = useState();
     const [overallStats, setOverallStats] = useState();
     const [currentStats, setCurrentStats] = useState();
     const [daywiseStats, setDaywiseStats] = useState();
 
-    useEffect(() => {
-        const fetchStats = async () => {
-            try {
-                const [
-                    overallStats,
-                    yesterdayAssignedInterviewRes,
-                    yesterdayAttemptedInterviewRes,
-                    currentStats,
-                    dayWiseStats
-                ] = await Promise.all([
-                    axios.get(`${backendUrl}get-overall-stats`),
-                    axios.get(`${backendUrl}get-all-tenants-yesterday-assigned-stats`),
-                    axios.get(`${backendUrl}get-overall-yesterday-attempted-interview-stats`),
-                    axios.get(`${backendUrl}get-current-stats`),
-                    axios.get(`${backendUrl}get-day-wise-stats`),
+    const fetchStats = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const results = await Promise.allSettled([
+                axios.get(apiUrl("get-overall-stats")),
+                axios.get(apiUrl("get-all-tenants-yesterday-assigned-stats")),
+                axios.get(apiUrl("get-overall-yesterday-attempted-interview-stats")),
+                axios.get(apiUrl("get-current-stats")),
+                axios.get(apiUrl("get-day-wise-stats")),
+            ]);
+            const [overallRes, yesterdayAssignedRes, yesterdayAttemptedRes, currentRes, dayWiseRes] = results;
 
-                ])
-                if (dayWiseStats.status === 200) {
-                    setDaywiseStats(dayWiseStats.data)
-                }
-                if (currentStats.status == 200) {
-                    setCurrentStats(currentStats.data)
-                }
-                if (overallStats.status === 200) {
-                    const data = overallStats.data;
+            if (dayWiseRes.status === "fulfilled") setDaywiseStats(dayWiseRes.value.data);
+            if (currentRes.status === "fulfilled") setCurrentStats(asArray(currentRes.value.data));
+            if (overallRes.status === "fulfilled" && overallRes.value.data?.overall) {
+                const data = overallRes.value.data;
+                const o = data.overall;
+                const sum = key =>
+                    (o.overallTechStats?.[key] || 0) +
+                    (o.overallCodingStats?.[key] || 0) +
+                    (o.overallCompanyStats?.[key] || 0);
 
-                    const overallAssigned =
-                        data.overall.overallTechStats.assigned +
-                        data.overall.overallCodingStats.assigned +
-                        data.overall.overallCompanyStats.assigned;
-
-                    const overallAttempted =
-                        data.overall.overallTechStats.attempted +
-                        data.overall.overallCodingStats.attempted +
-                        data.overall.overallCompanyStats.attempted;
-
-                    setOverallStats({
-                        ...data,
-                        overall: {
-                            ...data.overall,
-                            overall: {
-                                assigned: overallAssigned,
-                                attempted: overallAttempted,
-                            },
-                        },
-                    });
-                }
-
-                if (yesterdayAssignedInterviewRes.status === 200) setYesterdayAssignedStats(yesterdayAssignedInterviewRes.data);
-                if (yesterdayAttemptedInterviewRes.status === 200) setYesterdayAttemptedStats(yesterdayAttemptedInterviewRes.data);
-
-            } catch (error) {
-                console.error("Failed to fetch stats", error);
+                setOverallStats({
+                    ...data,
+                    overall: {
+                        ...o,
+                        overall: { assigned: sum("assigned"), attempted: sum("attempted") },
+                    },
+                });
             }
-        };
+            if (yesterdayAssignedRes.status === "fulfilled") setYesterdayAssignedStats(yesterdayAssignedRes.value.data);
+            if (yesterdayAttemptedRes.status === "fulfilled") setYesterdayAttemptedStats(yesterdayAttemptedRes.value.data);
 
-        fetchStats();
-    }, [])
-    useEffect(() => {
-        if (overallStats) {
-            console.log(overallStats.overall)
+            const failed = results.find(r => r.status === "rejected");
+            if (failed) setError(getErrorMessage(failed.reason, "Some statistics failed to load."));
+        } finally {
+            setLoading(false);
         }
-    }, [overallStats])
+    }, []);
+
+    useEffect(() => {
+        fetchStats();
+    }, [fetchStats]);
+
     const renderCount = (value) =>
-        value !== undefined ? (
+        value !== undefined && value !== null ? (
             <h6 style={{ fontSize: "1.2rem", fontWeight: "500" }}>{value}</h6>
         ) : (
-            <Spinner style={{ width: "1rem", height: "1rem" }} color="warning" />
+            <span className="text-muted">-</span>
         );
 
     return (
         <React.Fragment>
+            {error && (
+                <Alert color="danger" className="d-flex justify-content-between align-items-center mt-4">
+                    <span>{error}</span>
+                    <Button size="sm" color="danger" outline onClick={fetchStats} disabled={loading}>
+                        Retry
+                    </Button>
+                </Alert>
+            )}
             <Row className="Programming hoot-dark-test mt-4" style={styles.dashboardContainer}>
                 <Row>
                     {/* Overall Cards */}
@@ -250,11 +219,11 @@ const StudentExplore = (props) => {
                                     </thead>
 
                                     <tbody className="text-center">
-                                        {overallStats.tenantwise.tenantWiseTechstats.map((tenant) => {
-                                            const coding = overallStats.tenantwise.tenantWiseCodingstats.find(
+                                        {asArray(overallStats.tenantwise.tenantWiseTechstats).map((tenant) => {
+                                            const coding = asArray(overallStats.tenantwise.tenantWiseCodingstats).find(
                                                 t => t.tenant_id === tenant.tenant_id
                                             );
-                                            const company = overallStats.tenantwise.tenantWiseCompanystats.find(
+                                            const company = asArray(overallStats.tenantwise.tenantWiseCompanystats).find(
                                                 t => t.tenant_id === tenant.tenant_id
                                             );
 
@@ -283,11 +252,13 @@ const StudentExplore = (props) => {
                     </Col>
                     <Col md="6">
                         <h4 style={{ fontWeight: "600" }}>Yesterday's Statistics</h4>
-                        {(!yesterdayAssignedStats || !yesterdayAttemptedStats) ? (
+                        {loading ? (
                             <div className="text-center my-4">
                                 <Spinner color="success" />
                                 <p>Loading stats...</p>
                             </div>
+                        ) : !yesterdayAssignedStats ? (
+                            <p className="text-muted">No data available.</p>
                         ) : (
                             <Table bordered hover responsive className="shadow-sm rounded-4">
                                 <thead className="text-center">
@@ -309,8 +280,8 @@ const StudentExplore = (props) => {
                                 </thead>
 
                                 <tbody className="text-center">
-                                    {yesterdayAssignedStats.data.map((tenant) => {
-                                        const attemptedObj = yesterdayAttemptedStats.data.find(
+                                    {asArray(yesterdayAssignedStats.data).map((tenant) => {
+                                        const attemptedObj = asArray(yesterdayAttemptedStats?.data).find(
                                             (t) => t.tenant_id === tenant.tenant_id
                                         );
 
@@ -381,19 +352,19 @@ const StudentExplore = (props) => {
                                         <td className="fw-bold">{tenant.tenant_name}</td>
 
                                         {/* Technology */}
-                                        <td>{tenant.technologyInterviews.assigned}</td>
-                                        <td className="text-primary fw-bold">{tenant.technologyInterviews.attempted}</td>
-                                        <td className="text-warning fw-bold">{tenant.technologyInterviews.upcoming}</td>
+                                        <td>{tenant.technologyInterviews?.assigned}</td>
+                                        <td className="text-primary fw-bold">{tenant.technologyInterviews?.attempted}</td>
+                                        <td className="text-warning fw-bold">{tenant.technologyInterviews?.upcoming}</td>
 
                                         {/* Coding */}
-                                        <td>{tenant.codingInterviews.assigned}</td>
-                                        <td className="text-primary fw-bold">{tenant.codingInterviews.attempted}</td>
-                                        <td className="text-warning fw-bold">{tenant.codingInterviews.upcoming}</td>
+                                        <td>{tenant.codingInterviews?.assigned}</td>
+                                        <td className="text-primary fw-bold">{tenant.codingInterviews?.attempted}</td>
+                                        <td className="text-warning fw-bold">{tenant.codingInterviews?.upcoming}</td>
 
                                         {/* Company */}
-                                        <td>{tenant.companyInterviews.assigned}</td>
-                                        <td className="text-primary fw-bold">{tenant.companyInterviews.attempted}</td>
-                                        <td className="text-warning fw-bold">{tenant.companyInterviews.upcoming}</td>
+                                        <td>{tenant.companyInterviews?.assigned}</td>
+                                        <td className="text-primary fw-bold">{tenant.companyInterviews?.attempted}</td>
+                                        <td className="text-warning fw-bold">{tenant.companyInterviews?.upcoming}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -411,4 +382,4 @@ const StudentExplore = (props) => {
 
 };
 
-export default connect(null, { setBreadcrumbItems })(StudentExplore);
+export default TotalSuperAdminStats;

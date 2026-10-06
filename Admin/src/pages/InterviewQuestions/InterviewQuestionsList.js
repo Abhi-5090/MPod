@@ -1,84 +1,66 @@
-import React, { useEffect, useState } from "react"
+import React, { useCallback, useEffect, useState } from "react"
 import { MDBDataTable } from "mdbreact"
-import { Row, Col, Card, CardBody, CardTitle, Button, Badge } from "reactstrap"
-import { MutatingDots } from 'react-loader-spinner';
-import { connect } from "react-redux";
-import { Link } from "react-router-dom";
-import { ToastContainer, toast, Bounce } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import { Row, Col, Card, CardBody, CardTitle, Button } from "reactstrap"
+import { connect } from "react-redux"
+import { Link } from "react-router-dom"
+import { toast } from "react-toastify"
+import axios from "axios"
 //Import Action to copy breadcrumb items from local state to redux state
-import { setBreadcrumbItems } from "../../store/actions";
-import axios from "axios";
+import { setBreadcrumbItems } from "../../store/actions"
+import { apiUrl, getErrorMessage } from "../../config/api"
+import LoadState from "../../components/Common/LoadState"
+import ConfirmModal from "../../components/Common/ConfirmModal"
 import "./datatables.scss"
-import DeleteConfirmationModal from "./DeleteConfirmationModal";
-const TopicsList = (props) => {
-  document.title = "Interview Questions list | Technical Hub - All the list of Interview Questions";
 
+const breadcrumbItems = [
+  { title: "Mpod", link: "#" },
+  { title: "Interview Questions", link: "#" },
+  { title: "Interview Questions List", link: "#" },
+]
 
-  const breadcrumbItems = [
-    { title: "Technical Hub", link: "#" },
-    { title: "Interview Questions", link: "#" },
-    { title: "Interview Questions List", link: "#" },
-  ]
-  const [topicData, setTopicData] = useState([]);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [topicToDelete, setTopicToDelete] = useState(null);
+const InterviewQuestionsList = props => {
+  document.title = "Interview Questions | Mpod"
+
+  const [questions, setQuestions] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [questionToDelete, setQuestionToDelete] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await axios.get(apiUrl("get-interview-questions"))
+      setQuestions(Array.isArray(response.data) ? response.data : [])
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to load interview questions."))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    props.setBreadcrumbItems('Interview Questions', breadcrumbItems);
-    fetchData();
-  }, []);
-  // useEffect(() => {
-  //   let authUser = JSON.parse(localStorage.getItem('authUser'));
-  //   if (authUser.role == 'admin' || authUser.role == 'superadmin') {
-  //   }
-  //   else {
-  //     alert("your not autherized")
-  //     localStorage.clear();
-  //     window.location.href = '/admin/login';
-  //   }
-  // }, []);
+    props.setBreadcrumbItems("Interview Questions", breadcrumbItems)
+    fetchData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const fetchData = async () => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
+  const handleDelete = async () => {
+    if (!questionToDelete) return
+    setDeleting(true)
     try {
-      const response = await axios.get(backendUrl + 'get-interview-questions');
-      console.log(response.data)
-      if (response.status === 200) {
-        setTopicData(response.data);
-      }
-    } catch (error) {
-      console.log("Error fetching data:", error);
+      await axios.delete(apiUrl(`delete-interview-question/${questionToDelete._id}`))
+      toast.success("Interview Question deleted successfully")
+      setQuestions(prev => prev.filter(q => q._id !== questionToDelete._id))
+      setQuestionToDelete(null)
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to delete interview question."))
+    } finally {
+      setDeleting(false)
     }
-  };
+  }
 
-  const handleDelete = async (topic) => {
-    const backendUrl = process.env.REACT_APP_MPOD_BACKEND_URL;
-    const response = await axios.delete(`${backendUrl}delete-interview-question/${topicToDelete._id}`);
-    if (response.status == 200) {
-      toast.success('Interview Question deleted successfully', {
-        position: "top-right",
-        autoClose: 5000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-        progress: undefined,
-        theme: "light",
-        transition: Bounce,
-      });
-    }
-    const updatedTopicData = topicData.filter(topic => topic._id !== topicToDelete._id);
-    setTopicData(updatedTopicData);
-
-    setShowDeleteModal(false);
-  };
-
-  const toggleDeleteModal = (topic) => {
-    setTopicToDelete(topic);
-    setShowDeleteModal(!showDeleteModal);
-  };
-  const backendImageUrl = process.env.REACT_APP_BACKEND_IMAGE_URL
   const data = {
     columns: [
       { label: "Technology", field: "technology_name", sort: "asc", width: 150 },
@@ -87,77 +69,59 @@ const TopicsList = (props) => {
       { label: "Star Status", field: "previous_asked_status", sort: "asc", width: 30 },
       { label: "Action", field: "actions", sort: "asc", width: 30 },
     ],
-    rows: topicData.map(topic => ({
-      technology_name: topic.technology_name,
-      question: topic.question,
-      answer: topic.answer,
-      previous_asked_status: topic.previous_asked_status,
+    rows: questions.map(q => ({
+      technology_name: q.technology_name,
+      question: q.question,
+      answer: q.answer,
+      previous_asked_status: q.previous_asked_status,
       actions: (
         <div>
-          <Link to={`/edit-interview-question/${topic._id}`} className="btn btn-info btn-sm me-2">Edit</Link>
-
-          <Button color="danger"  size="sm" onClick={() => toggleDeleteModal(topic)}>Delete</Button>
+          <Link to={`/edit-interview-question/${q._id}`} className="btn btn-info btn-sm me-2">
+            Edit
+          </Link>
+          <Button color="danger" size="sm" onClick={() => setQuestionToDelete(q)}>
+            Delete
+          </Button>
         </div>
       ),
     })),
-  };
+  }
 
   return (
     <React.Fragment>
       <Row>
-        <ToastContainer
-          position="top-right"
-          autoClose={5000}
-          hideProgressBar={false}
-          newestOnTop={false}
-          closeOnClick
-          rtl={false}
-          pauseOnFocusLoss
-          draggable
-          pauseOnHover
-          theme="light"
-          transition={Bounce}  // Corrected this line
-        />
-
-        {/* Same as */}
-        <ToastContainer />
         <Col className="col-12">
           <Card>
             <CardBody className="d-flex justify-content-between align-items-center">
               <CardTitle className="h4">Add Interview Question</CardTitle>
-              <a href="add-interview-question">
-                <Button type="button" color="primary" className="waves-effect waves-light">Add Interview Question</Button>
-              </a>
+              <Link to="/add-interview-question" className="btn btn-primary waves-effect waves-light">
+                Add Interview Question
+              </Link>
             </CardBody>
             <CardBody>
-              {
-                data.rows.length !== 0 ? (
-                  <MDBDataTable responsive bordered data={data} noBottomColumns />
-                ) : (
-                  <div className="row">
-                    <div className="col-md-2 offset-5">
-                      <MutatingDots
-                        visible={true}
-                        height="100"
-                        width="100"
-                        color="#2B3A4A"
-                        secondaryColor="#2B3A4A"
-                        radius="12.5"
-                        ariaLabel="mutating-dots-loading"
-                        wrapperStyle={{}}
-                        wrapperClass=""
-                      />
-                    </div>
-                  </div>
-                )
-              }
+              <LoadState
+                loading={loading}
+                error={error}
+                empty={!questions.length}
+                emptyText="No interview questions found."
+                onRetry={fetchData}
+              >
+                <MDBDataTable responsive bordered data={data} noBottomColumns />
+              </LoadState>
             </CardBody>
           </Card>
         </Col>
       </Row>
-      <DeleteConfirmationModal isOpen={showDeleteModal} toggle={() => setShowDeleteModal(!showDeleteModal)} onDelete={handleDelete} />
+      <ConfirmModal
+        isOpen={!!questionToDelete}
+        toggle={() => setQuestionToDelete(null)}
+        onConfirm={handleDelete}
+        title="Confirm Delete"
+        message="Are you sure you want to delete this interview question?"
+        busy={deleting}
+      />
     </React.Fragment>
-  );
-};
+  )
+}
 
-export default connect(null, { setBreadcrumbItems })(TopicsList);
+export default connect(null, { setBreadcrumbItems })(InterviewQuestionsList)

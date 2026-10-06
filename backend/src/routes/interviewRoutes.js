@@ -3,7 +3,7 @@ const Tech = require("../controllers/InterviewController");
 const Company = require("../controllers/CompanyInterviewController");
 const Coding = require("../controllers/CodingInterviewController");
 const upload = require("../middlewares/upload");
-const { requireStaff, authenticate, scopeTenantParam } = require("../middlewares/auth");
+const { requireStaff, reportAccess, scopeTenantParam } = require("../middlewares/auth");
 const { CAN } = require("../config/roles");
 
 // Scheduling and managing interviews (staff, scoped to their college) and
@@ -11,7 +11,7 @@ const { CAN } = require("../config/roles");
 const Router = express.Router();
 const staff = requireStaff(CAN.scheduleInterviews);
 const sheet = [upload.cleanupUpload, upload.single("file", "sheet")];
-const reportReader = authenticate({ allow: ["staff", "student"] });
+const reportReader = reportAccess();
 
 // Technology interviews
 Router.post("/api/add-interviewee-details", staff, Tech.addInterviewDetails);
