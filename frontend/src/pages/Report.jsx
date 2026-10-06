@@ -10,7 +10,7 @@ import DOMPurify from "dompurify";
 // import * as am5xy3d from "@amcharts/amcharts5/xy3d";
 import logo from '../assets/images/logo/mayalogo.png'
 import { AiOutlineDownload } from "react-icons/ai";
-import axiosInstance, { attemptTokenFor, forgetAttemptTokens } from "../api/axiosInstance";
+import axiosInstance, { IMAGE_BASE, attemptTokenFor, forgetAttemptTokens } from "../api/axiosInstance";
 
 // const AmCharts5Chart = ({ values, chartId, axisColor }) => {
 //   const chartRef = useRef(null);
@@ -171,7 +171,7 @@ function Report(props) {
     const [accuracyAverage, setAccuracyAverage] = useState(0);
     const [totalDuration, setTotalDuration] = useState();
     const [loading, setLoading] = useState(true);
-    const frontendUrl = process.env.REACT_APP_PUBLIC_FRONTEND_URL;
+    const frontendUrl = "/assets/";
     const [imageUrl, setImageUrl] = useState()
     const [emotions, setEmotions] = useState()
     const [imageLoaded, setImageLoaded] = useState(false);
@@ -186,8 +186,8 @@ function Report(props) {
     const [startDate, setStartDate] = useState()
     const [interviewDetails, setInterviewDetails] = useState()
 
-    const backendImageUrl = process.env.REACT_APP_PUBLIC_BACKEND_IMAGE_URL;
-    const frontendImageUrl = process.env.REACT_APP_PUBLIC_FRONTEND_URL;
+    const backendImageUrl = IMAGE_BASE;
+    const frontendImageUrl = "/assets/";
 
     useEffect(() => {
         if (!roll_no) {

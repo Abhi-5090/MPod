@@ -1,11 +1,13 @@
-import Login from "./Login";
-import Home2 from "./Home2";
-import KioskSetup from "./KioskSetup";
-import Report from "./Report";
-import Dashboard from "./Dashboard";
-import CodingReport from "./CodingReport";
-import ForgotPassword from "./ForgotPassword";
-import NotFound from "./NotFound";
+import { lazy } from "react";
+
+const Login = lazy(() => import("./Login"));
+const Home2 = lazy(() => import("./Home2"));
+const KioskSetup = lazy(() => import("./KioskSetup"));
+const Report = lazy(() => import("./Report"));
+const Dashboard = lazy(() => import("./Dashboard"));
+const CodingReport = lazy(() => import("./CodingReport"));
+const ForgotPassword = lazy(() => import("./ForgotPassword"));
+const NotFound = lazy(() => import("./NotFound"));
 
 // Student website, kiosk screens and reports. Data access is enforced by the API;
 // pages that need a student session redirect to /login on 401.

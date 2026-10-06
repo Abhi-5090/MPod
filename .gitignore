@@ -2,6 +2,9 @@
 node_modules/
 build/
 dist/
+
+# Local development database
+backend/.dev-db/
 coverage/
 .eslintcache
 *.log
@@ -11,6 +14,8 @@ coverage/
 .env
 .env.*
 !.env.example
+# non-secret dev defaults (URLs only)
+!Admin/.env.development
 backend/src/config/*.json
 
 # Student data / runtime uploads (PII)

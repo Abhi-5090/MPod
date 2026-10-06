@@ -1,4 +1,14 @@
-require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
+const path = require("path");
+const fs = require("fs");
+
+// Local development overrides live in backend/.env.development.local (git-ignored,
+// created by `npm run setup`). Values there win over backend/.env.
+// Never loaded when NODE_ENV=production.
+const localEnv = path.resolve(__dirname, "../../.env.development.local");
+if (process.env.NODE_ENV !== "production" && fs.existsSync(localEnv)) {
+  require("dotenv").config({ path: localEnv });
+}
+require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const required = ["MONGODB_URI", "JWT_SECRET"];
 const missing = required.filter((k) => !process.env[k] || !String(process.env[k]).trim());

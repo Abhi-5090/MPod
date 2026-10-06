@@ -5,11 +5,11 @@ import MetisMenu from "metismenujs"
 import { Link } from "react-router-dom"
 import { withTranslation } from "react-i18next"
 
-import withRouter from "components/Common/withRouter"
+import withRouter from "@/components/Common/withRouter"
 import { useAuth } from "../../context/AuthContext"
 import { getMenuForUser } from "../../config/menu"
 
-const iconUrl = name => `${process.env.PUBLIC_URL || ""}/dashboard-icons/${name}`
+const iconUrl = name => `${import.meta.env.BASE_URL}dashboard-icons/${name}`
 
 const SidebarContent = props => {
   const ref = useRef()

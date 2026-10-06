@@ -1,0 +1,23 @@
+{
+  "name": "mpod",
+  "private": true,
+  "description": "mPod - AI mock-interview platform (backend API, student site, admin portal)",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "concurrently --kill-others-on-fail -n DB,BACKEND,FRONTEND,ADMIN -c gray,cyan,magenta,yellow \"npm:dev:db\" \"npm:dev:backend\" \"npm:dev:frontend\" \"npm:dev:admin\"",
+    "dev:db": "npm --prefix backend run db",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:admin": "npm --prefix Admin run dev",
+    "seed": "npm --prefix backend run seed:dev",
+    "test": "npm --prefix backend test",
+    "build": "npm --prefix frontend run build && npm --prefix Admin run build",
+    "migrate": "npm --prefix backend run migrate"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

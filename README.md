@@ -1,133 +1,112 @@
 # mPod
 
-mPod is an AI mock-interview platform for colleges. A college buys interview credits and schedules interviews for its students. Students take them on the mPod kiosk on campus or on the website. The AI scores the answers and the student gets a report.
+mPod is an AI mock-interview platform for colleges. A college buys interview credits and schedules interviews for its students. Students take them on the mPod kiosk on campus or on the website. The AI scores the answers, and students and staff see a report.
 
-| Folder | What it is | Dev port |
+| Folder | App | Dev URL |
 |---|---|---|
-| `backend/` | Express + MongoDB API (`/backend/api/*`) | 8002 |
-| `frontend/` | Student website, kiosk screen (`/home-2`) and reports | 3000 |
-| `Admin/` | Admin portal for platform admins and college staff (served under `/admin`) | 8003 |
+| `backend/` | Express + MongoDB API | http://localhost:8002/backend |
+| `frontend/` | Student website, kiosk screen, reports (React + Vite) | http://localhost:3000 |
+| `Admin/` | Admin portal for platform admins and college staff (React + Vite) | http://localhost:8003/admin |
 
-## Requirements
+How to use the product (every role, every screen) is in **[USER_GUIDE.md](USER_GUIDE.md)**.
 
-- **Node.js** 18.18 or newer (20 LTS recommended).
-- **MongoDB 6+ running as a replica set.** Credit updates use transactions. A single-node replica set is fine for development.
-- **An OpenAI API key** whose project allows model requests (`model.request` scope).
-- **A Gmail account with an app password**, for OTP and schedule emails. Optional in development.
+---
 
-## 1. Start MongoDB locally (development)
+## Quick start
+
+You need **Node.js 20+** and **MongoDB**:
 
 ```bash
-mkdir -p ~/mpod-db
-mongod --replSet rs0 --dbpath ~/mpod-db --port 27017 --bind_ip 127.0.0.1
-# in another terminal, once:
-mongosh --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+brew tap mongodb/brew && brew install mongodb-community
 ```
 
-If `mongosh` isn't installed, run `brew install mongosh`.
-
-## 2. Backend
+You don't need to start MongoDB yourself; `npm run dev` does it.
 
 ```bash
-cd backend
-cp .env.example .env        # then fill in values (see below)
-npm install
-npm test                    # 170 tests, in-memory MongoDB, no network or real DB used
-MONGODB_URI="mongodb://127.0.0.1:27017/mpod_dev?replicaSet=rs0" npm run seed:dev   # demo data (local DB only)
-npm run dev                 # http://localhost:8002/backend
+npm run setup      # once: installs all three apps, creates backend/.env.development.local
+npm run dev        # starts DB + backend + student site + admin portal together
+npm run seed       # once, in a second terminal while dev is running: demo data and logins
 ```
 
-### Environment variables
+Then open:
 
-| Variable | Required | Notes |
-|---|---|---|
-| `MONGODB_URI` | yes | Production must be a replica set |
-| `JWT_SECRET` | yes | Long random string (32+ characters). Changing it logs everyone out. |
-| `OPENAI_API_KEY` | yes | Key must allow model requests |
-| `EMAIL_USER`, `EMAIL_PASS` | prod | Gmail address and app password |
-| `NODE_ENV` | prod | Set to `production`. Enables Secure cookies and hides error details. |
-| `CORS_ORIGINS` | prod | Comma-separated, e.g. `https://mpod.ai` |
-| `TRUST_PROXY` | prod | `1` behind nginx or a load balancer on another host; `loopback` (default) for nginx on the same host |
+- Student site: http://localhost:3000. Log in as `STUDENT1` / `Passw0rd!`.
+- Admin portal: http://localhost:8003/admin. Log in as `COLLEGEADM` (college admin) or `ADMIN1` (platform admin), password `Passw0rd!`.
 
-Optional settings (model overrides, timings) are documented in `backend/.env.example`.
+Press **Ctrl+C** once to stop everything.
 
-### Demo logins from `seed:dev`
+### All commands (run from the `mPod/` folder)
+
+| Command | What it does |
+|---|---|
+| `npm run setup` | Installs dependencies for all apps and creates the local dev env file. Safe to re-run. |
+| `npm run dev` | Starts database, backend, student site and admin portal (colour-coded logs) |
+| `npm run dev:backend` / `dev:frontend` / `dev:admin` / `dev:db` | Starts just one of them |
+| `npm run seed` | Creates demo college, users, syllabus and question banks in the **local** database |
+| `npm test` | Runs the backend test suite (in-memory database, safe) |
+| `npm run build` | Production builds of the student site and admin portal (into `frontend/build` and `Admin/build`) |
+| `npm run migrate` | Dry run of the one-time production data migration (add `-- --apply` to apply) |
+
+### Demo logins created by `npm run seed`
 
 The password for all of them is `Passw0rd!`.
 
-- `ADMIN1`: platform admin (Admin portal)
-- `COLLEGEADM`: college admin of "Demo College" (Admin portal; can register kiosks)
-- `TRAINER1`: trainer (Admin portal, schedules interviews)
-- `STUDENT1`, `STUDENT2`: students (student website)
+| User id | Role | Use it for |
+|---|---|---|
+| `ADMIN1` | Platform admin | Admin portal: colleges, credits, syllabus, question banks |
+| `COLLEGEADM` | College admin (Demo College) | Admin portal: students, interviews, kiosks, credits |
+| `TRAINER1` | Trainer | Admin portal: scheduling interviews |
+| `STUDENT1`, `STUDENT2` | Students | Student website, kiosk |
 
-## 3. Student website
+---
 
-```bash
-cd frontend
-cp .env.example .env
-```
+## How the local setup works
 
-For local development, edit `.env` to point at your local backend:
+- **Database.** `npm run dev` starts a local MongoDB replica set on port **27018**, with data in `backend/.dev-db/`. It keeps your data between runs. To start over, stop dev, delete `backend/.dev-db/`, then run dev and seed again.
+- **Backend config.**
+  - `backend/.env` holds the real settings: the OpenAI key, email, `JWT_SECRET`.
+  - `backend/.env.development.local`, created by setup, overrides them for local work. It points to the local database and uses plain-HTTP cookies.
+  - **That's why `npm run dev` never touches the production database.** To deliberately use another database locally, change `MONGODB_URI` in `backend/.env.development.local`.
+- **Front-ends.** Both call the API on their own address under `/backend`, and the Vite dev server forwards that to `http://localhost:8002`. Because of this:
+  - there is no CORS setup,
+  - the login cookie just works,
+  - no API URLs need to be configured.
 
-```
-REACT_APP_PUBLIC_BACKEND_URL=http://localhost:8002/backend/api/
-REACT_APP_PUBLIC_BACKEND_IMAGE_URL=http://localhost:8002/backend/
-REACT_APP_PUBLIC_BACKEND_MODEL_URL=http://localhost:8002/backend/models/
-```
+  The old `REACT_APP_*` lines in `frontend/.env` and `Admin/.env` are no longer used.
+- **Ports in use?** If you see `Port 8002 is already in use`, an old backend is still running. Stop it with Ctrl+C in its terminal, or run `lsof -ti tcp:8002 | xargs kill`. Do the same for ports 3000 and 8003.
 
-Then install and start:
+### Troubleshooting
 
-```bash
-npm install --legacy-peer-deps
-npm start                   # http://localhost:3000
-```
+| Symptom | Fix |
+|---|---|
+| `Port ... is already in use` | An old dev server is still running. Stop it (see above). |
+| `mongod not found` | `brew tap mongodb/brew && brew install mongodb-community`. Until then, dev uses a temporary in-memory database. |
+| Login works, but every page says "Please login" | Make sure you opened the app on `localhost` (not `127.0.0.1`) and started it with `npm run dev`. |
+| Interview "Could not prepare your questions", or scores never appear | The OpenAI key in `backend/.env` must allow model requests (`model.request` scope). Check the BACKEND log. |
+| No OTP email arrives | Set `EMAIL_USER` / `EMAIL_PASS` (a Gmail app password) in `backend/.env`. |
+| Voice answer box doesn't appear | Use Chrome and allow the microphone, or click **Type instead**. |
 
-## 4. Admin portal
+---
 
-```bash
-cd Admin
-cp .env.example .env
-```
-
-Edit `.env`:
-
-```
-REACT_APP_MPOD_BACKEND_URL=http://localhost:8002/backend/api/
-REACT_APP_BACKEND_IMAGE_URL=http://localhost:8002/backend/
-REACT_APP_STUDENT_APP_URL=http://localhost:3000/
-```
-
-Then install and start:
-
-```bash
-npm install --legacy-peer-deps
-npm start                   # http://localhost:8003/admin
-```
-
-Cookies are `SameSite=Strict`. Cookie "site" ignores the port, so the apps work together on `localhost`. In production, serve all three under the same domain:
-
-- `https://mpod.ai/` for the student site
-- `https://mpod.ai/admin/` for the Admin portal
-- `https://mpod.ai/backend/` proxied to the API
-
-## 5. Try the whole flow locally
-
-1. Admin portal: log in as `COLLEGEADM`. Go to **AI Interviews → Company interviews → Add**, choose platform **web**, roll number `STUDENT1`, company "Demo Corp", and a start time 1–2 minutes from now. One credit is charged; see **Credits**.
-2. Student site: log in as `STUDENT1`. On the dashboard, click **Attempt** when it becomes available, answer by voice (Chrome) or by typing, and submit. The report opens when the evaluation finishes.
-3. Kiosk: open `http://localhost:3000/kiosk-setup` and register the kiosk with `COLLEGEADM`. Schedule an interview with platform **mpod**, then open `/home-2` and enter the roll number. Revoke kiosks from the Admin portal under **Kiosk devices**.
-
-## Deploying to production
+## Production
 
 1. **Back up the database.**
-2. Deploy the backend with `NODE_ENV=production`. Then run the one-time migration:
-   - `npm run migrate` does a dry run and reports what it would change.
-   - `npm run migrate -- --apply` applies it. This creates credit-ledger opening balances, stamps the college on existing interviews, removes stored legacy session tokens and plaintext OTPs, and builds indexes.
-3. Build the front-ends with production `.env` values:
-   - Student site: `npm run build`
-   - Admin portal: `npm run build`, served under `/admin/`
-   Serve the static `build/` folders; don't use `npm start` in production.
-4. Register each campus kiosk once at `https://mpod.ai/kiosk-setup`, signed in as that college's admin.
-5. Everyone has to log in again after this release, because the old session format is no longer accepted.
+2. **Backend:** run `npm ci` in `backend/`, then start it with `NODE_ENV=production npm start` (use pm2 or systemd to keep it running). Required in `backend/.env`:
+   - `MONGODB_URI` (a replica set)
+   - `JWT_SECRET` (32+ random characters)
+   - `OPENAI_API_KEY`
+   - `EMAIL_USER`, `EMAIL_PASS`
+   - `CORS_ORIGINS=https://mpod.ai`
+   - `TRUST_PROXY` (`1` when behind nginx on another host)
+3. **One-time migration:** run `npm run migrate` (dry run, reports what it would change), then `npm run migrate -- --apply`.
+4. **Front-ends:** `npm run build`, then serve:
+   - `frontend/build` at `https://mpod.ai/`
+   - `Admin/build` at `https://mpod.ai/admin/`
+   - and proxy `https://mpod.ai/backend/` to the Node server.
+
+   Both are single-page apps, so unknown paths must fall back to `index.html`.
+5. **Kiosks:** register each campus kiosk once at `https://mpod.ai/kiosk-setup`, signed in as that college's admin.
+6. Everyone has to log in again after this release.
 
 ## Security model (summary)
 
@@ -136,7 +115,8 @@ Cookies are `SameSite=Strict`. Cookie "site" ignores the port, so the apps work 
   - students (`userSessionToken` cookie)
   - staff (`adminSessionToken` cookie)
   - registered kiosks (`kioskDeviceToken` cookie)
-  Sessions are revocable server-side.
-- **College scoping.** College staff only see and change their own college's data. Platform admins (`admin`, `superadmin`) see all colleges.
-- **Server-owned interviews.** Interviews are issued, timed and saved by the server. The browser only sends answers, using a per-attempt token. Submitting is idempotent, and evaluation runs in the background with automatic retries.
-- **Credit ledger.** Credits change only through the append-only ledger (`credittransactions`), using atomic updates.
+
+  Sessions can be revoked on the server.
+- **College scoping.** College staff only see and change their own college. Platform admins see all colleges.
+- **Server-owned interviews.** Interviews are issued, timed and saved by the server. Submitting is idempotent, and evaluation runs in the background with retries.
+- **Credit ledger.** Credits change only through the append-only `credittransactions` ledger.

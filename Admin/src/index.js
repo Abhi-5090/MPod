@@ -4,7 +4,6 @@ import { BrowserRouter } from "react-router-dom"
 import { Provider } from "react-redux"
 
 import App from "./App"
-import * as serviceWorker from "./serviceWorker"
 import "./i18n"
 import store from "./store"
 import setupAxios from "./api/setupAxios"
@@ -18,7 +17,7 @@ const root = ReactDOM.createRoot(document.getElementById("root"))
 
 root.render(
   <Provider store={store}>
-    <BrowserRouter basename={"/admin"}>
+    <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
       <AuthProvider>
         <App />
       </AuthProvider>
@@ -26,4 +25,3 @@ root.render(
   </Provider>
 )
 
-serviceWorker.unregister()

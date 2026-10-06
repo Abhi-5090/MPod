@@ -1,3 +1,5 @@
+// react-speech-recognition expects the regenerator runtime as a global.
+import "regenerator-runtime/runtime";
 import React, { Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from "react-router-dom";

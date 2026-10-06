@@ -1,7 +1,9 @@
 import axios from "axios";
 
-export const API_BASE = process.env.REACT_APP_PUBLIC_BACKEND_URL; // e.g. https://mpod.ai/backend/api/
-export const IMAGE_BASE = process.env.REACT_APP_PUBLIC_BACKEND_IMAGE_URL; // e.g. https://mpod.ai/backend/
+// Relative by default: in dev Vite proxies /backend to the API; in production the
+// site is served from the same domain as the API. Override with VITE_* only if needed.
+export const API_BASE = import.meta.env.VITE_API_URL || "/backend/api/"; // must end with /
+export const IMAGE_BASE = import.meta.env.VITE_BACKEND_URL || "/backend/"; // must end with /
 
 // All requests carry the httpOnly session cookie; nothing sensitive is kept in JS storage.
 const axiosInstance = axios.create({ baseURL: API_BASE, withCredentials: true });

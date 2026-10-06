@@ -1,11 +1,13 @@
 // Central place for backend/base URLs and small API helpers.
-// REACT_APP_MPOD_BACKEND_URL must end with a trailing slash, e.g. https://mpod.ai/backend/api/
-export const API_BASE = process.env.REACT_APP_MPOD_BACKEND_URL || ""
-export const IMAGE_BASE = process.env.REACT_APP_BACKEND_IMAGE_URL || ""
+// VITE_API_URL (optional) must end with a trailing slash, e.g. https://mpod.ai/backend/api/
+// Relative by default: in dev Vite proxies /backend to the API; in production the
+// admin is served from the same domain as the API.
+export const API_BASE = import.meta.env.VITE_API_URL || "/backend/api/"
+export const IMAGE_BASE = import.meta.env.VITE_BACKEND_URL || "/backend/"
 // Admin is served at <origin>/admin, so without an explicit URL the student app is the origin root.
 const studentAppFallback = () =>
   typeof window !== "undefined" && window.location ? `${window.location.origin}/` : "/"
-export const STUDENT_APP_URL = process.env.REACT_APP_STUDENT_APP_URL || studentAppFallback()
+export const STUDENT_APP_URL = import.meta.env.VITE_STUDENT_APP_URL || studentAppFallback()
 
 export const apiUrl = path => `${API_BASE}${path}`
 

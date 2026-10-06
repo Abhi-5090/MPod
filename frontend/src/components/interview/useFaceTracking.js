@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import * as faceapi from "face-api.js";
 
-const MODEL_BASE = process.env.REACT_APP_PUBLIC_BACKEND_MODEL_URL;
+import { IMAGE_BASE } from "../../api/axiosInstance";
+
+const MODEL_BASE = `${IMAGE_BASE}models/`;
 const EMPTY_EMOTIONS = { happy: 0, sad: 0, angry: 0, neutral: 0, surprise: 0, fear: 0, disgust: 0 };
 
 const eyeAspectRatio = (eye) => {
@@ -39,7 +40,10 @@ export default function useFaceTracking(enabled = true) {
     if (!enabled) return undefined;
     let cancelled = false;
     (async () => {
+      let faceapi;
       try {
+        // Loaded on demand: face-api.js + TensorFlow.js are large and only needed here.
+        faceapi = await import("face-api.js");
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(`${MODEL_BASE}tiny_face_detector`),
           faceapi.nets.faceLandmark68Net.loadFromUri(`${MODEL_BASE}face_landmark_68`),

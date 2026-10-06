@@ -10,7 +10,7 @@ import DOMPurify from "dompurify";
 
 import logo from '../assets/images/logo/mayalogo.png'
 import { AiOutlineDownload } from "react-icons/ai";
-import axiosInstance, { attemptTokenFor, forgetAttemptTokens } from "../api/axiosInstance";
+import axiosInstance, { IMAGE_BASE, attemptTokenFor, forgetAttemptTokens } from "../api/axiosInstance";
 
 
 function CodingReport(props) {
@@ -26,12 +26,12 @@ function CodingReport(props) {
     const [accuracyAverage, setAccuracyAverage] = useState(0);
     const [totalDuration, setTotalDuration] = useState();
     const [loading, setLoading] = useState(true);
-    const frontendUrl = process.env.REACT_APP_PUBLIC_FRONTEND_URL;
+    const frontendUrl = "/assets/";
     const [imageUrl, setImageUrl] = useState()
     const [emotions, setEmotions] = useState()
     const [imageLoaded, setImageLoaded] = useState(false);
-    const backendImageUrl = process.env.REACT_APP_PUBLIC_BACKEND_IMAGE_URL;
-    const frontendImageUrl = process.env.REACT_APP_PUBLIC_FRONTEND_URL;
+    const backendImageUrl = IMAGE_BASE;
+    const frontendImageUrl = "/assets/";
     useEffect(() => {
         if (!roll_no) {
             console.error("Roll number is missing. Cannot load report.");
@@ -1074,7 +1074,7 @@ function CodingReport(props) {
                                                                                                                 <img src={`${frontendImageUrl}idea.png`} width="30px" style={{ marginRight: "10px" }} />
                                                                                                                 <h3 style={{ margin: "0", color: "#000" }}>Optimized Code Analysis</h3>
                                                                                                             </div>
-                                                                                                            <p className="mb-36" style={{ background: "#fff", lineHeight: "2.2", background: "#ffffff", padding: "20px", color: "#000000", fontSize: "15px", marginLeft: "40px", border: "1px solid #ffffff29", wordWrap: "break-word", whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
+                                                                                                            <p className="mb-36" style={{ lineHeight: "2.2", background: "#ffffff", padding: "20px", color: "#000000", fontSize: "15px", marginLeft: "40px", border: "1px solid #ffffff29", wordWrap: "break-word", whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
                                                                                                                 <p style={{ color: "#008738" }}>Comment:</p >
                                                                                                                 <span style={{ color: "#000" }}>{item.optimized_result.optimization_comment}</span>
                                                                                                                 <br />
