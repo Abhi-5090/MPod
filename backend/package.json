@@ -7,7 +7,8 @@
     "start": "node app.js",
     "dev": "nodemon app.js",
     "migrate": "node scripts/migrate.js",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "seed:dev": "node scripts/seed-dev.js"
   },
   "author": "",
   "license": "ISC",

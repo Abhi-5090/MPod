@@ -91,7 +91,11 @@ const addUser = asyncHandler(async (req, res) => {
 
   // Roll numbers and emails must be unique across the whole platform.
   const [existingRolls, existingEmails] = await Promise.all([
-    User.find({ roll_no: { $in: candidates.map((c) => c.doc.roll_no) } }).select("roll_no").lean(),
+    // case-insensitive: legacy data may hold lower-case roll numbers
+    User.find({ roll_no: { $in: candidates.map((c) => c.doc.roll_no) } })
+      .collation({ locale: "en", strength: 2 })
+      .select("roll_no")
+      .lean(),
     User.find({ email: { $in: candidates.map((c) => c.doc.email) } }).select("email").lean(),
   ]);
   const rollTaken = new Set(existingRolls.map((u) => String(u.roll_no).toUpperCase()));
@@ -192,8 +196,8 @@ const uploadProfilePics = asyncHandler(async (req, res) => {
     // Always stored as <ROLL>.png so the apps can find it; browsers sniff the real type.
     const dest = path.join(PROFILE_PICS_DIR, `${roll}.png`);
     // eslint-disable-next-line no-await-in-loop
-    const buf = await f.buffer();
-    if (buf.length > MAX_ENTRY_BYTES) {
+    const buf = await readEntryLimited(f, MAX_ENTRY_BYTES);
+    if (!buf) {
       skipped.push({ file: path.basename(f.path), reason: "Image larger than 5 MB" });
       continue;
     }
@@ -207,6 +211,39 @@ const uploadProfilePics = asyncHandler(async (req, res) => {
   }
   return res.status(200).json({ message: `Uploaded ${saved.length} profile picture(s).`, saved, skipped });
 });
+
+// Inflates one zip entry but aborts as soon as it exceeds `limit` bytes (the size in
+// the zip header can lie, so it is never trusted). Resolves null when too large.
+const readEntryLimited = (entry, limit) =>
+  new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    let done = false;
+    const stream = entry.stream();
+    stream.on("data", (c) => {
+      if (done) return;
+      size += c.length;
+      if (size > limit) {
+        done = true;
+        stream.destroy();
+        resolve(null);
+        return;
+      }
+      chunks.push(c);
+    });
+    stream.on("end", () => {
+      if (!done) {
+        done = true;
+        resolve(Buffer.concat(chunks));
+      }
+    });
+    stream.on("error", (e) => {
+      if (!done) {
+        done = true;
+        reject(e);
+      }
+    });
+  });
 
 // macOS zips include __MACOSX/ and ._ files
 const base_ignored = (p) => p.startsWith("__MACOSX/") || path.basename(p).startsWith("._") || path.basename(p) === ".DS_Store";
@@ -823,6 +860,7 @@ const attemptedInterviewsCount = async (req, res, next) => {
       {
         $match: {
           roll_no: roll_no,
+          $or: [{ tenant_id: req.auth.tenantId }, { tenant_id: { $exists: false } }],
           question_details: {
             $ne: null,
             $not: { $size: 0 }
@@ -837,6 +875,7 @@ const attemptedInterviewsCount = async (req, res, next) => {
       {
         $match: {
           roll_no: roll_no,
+          $or: [{ tenant_id: req.auth.tenantId }, { tenant_id: { $exists: false } }],
           question_details: {
             $ne: null,
             $not: { $size: 0 }
@@ -851,6 +890,7 @@ const attemptedInterviewsCount = async (req, res, next) => {
       {
         $match: {
           roll_no: roll_no,
+          $or: [{ tenant_id: req.auth.tenantId }, { tenant_id: { $exists: false } }],
           question_details: {
             $ne: null,
             $not: { $size: 0 }
@@ -877,6 +917,7 @@ const platformInterviewsCount = async (req, res, next) => {
         {
           $match: {
             roll_no: roll_no,
+            $or: [{ tenant_id: req.auth.tenantId }, { tenant_id: { $exists: false } }],
             question_details: { $ne: null },
             $expr: { $gt: [{ $size: "$question_details" }, 0] } // Ensure not empty
           }
@@ -924,7 +965,7 @@ const overallAccuracy = async (req, res, next) => {
     const getAccuracies = async (model) => {
       const accuracy = await model.aggregate([
         {
-          $match: { roll_no: roll_no, status: 0 }
+          $match: { roll_no: roll_no, status: 0, $or: [{ tenant_id: req.auth.tenantId }, { tenant_id: { $exists: false } }] }
         },
         {
           $addFields: {

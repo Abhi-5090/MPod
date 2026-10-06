@@ -4,6 +4,7 @@ const CompanyQuestion = require("../models/companyQuestion");
 const scheduling = require("../services/scheduling");
 const { loadInterviewForAccess } = require("../services/interviewModels");
 const { asyncHandler } = require("../lib/http");
+const { istDayRange } = require("../lib/time");
 
 // Company interviews: admin scheduling and lists. Questions are issued by the
 // interview session service when the student starts.
@@ -32,23 +33,8 @@ const getAllInterviewDetails = async (req, res) => {
   const tenant_id = req.params.id;
   try {
     // parse optional date query param (YYYY-MM-DD)
-    let dateParam = req.query.date;
-    let targetDate;
-    if (dateParam) {
-      // create Date from YYYY-MM-DD (interpreted in server timezone as midnight)
-      targetDate = new Date(dateParam);
-    } else {
-      // default to yesterday
-      targetDate = new Date();
-      targetDate.setDate(targetDate.getDate() - 1);
-    }
-
-    // build start and end of target day in server timezone
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    // The requested calendar day (or yesterday) in India, whatever the server's timezone.
+    const { start: startOfDay, end: endOfDay } = istDayRange(req.query.date ? String(req.query.date) : null, -1);
 
     const InterviewDetails = await CompanyInterview.aggregate([
       // match start_date_time within the day
@@ -125,6 +111,7 @@ const getAllInterviewDetails = async (req, res) => {
 
     return res.status(200).json(InterviewDetails);
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ message: error.message });
     console.error("Error fetching interview details:", error);
     return res.status(500).json({ message: "Internal server error", ...(process.env.NODE_ENV === "production" ? {} : { error: error.message }) });
   }

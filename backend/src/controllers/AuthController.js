@@ -13,6 +13,7 @@ const LOCK_MINUTES = 15;
 const OTP_TTL_MINUTES = 10;
 const OTP_MAX_ATTEMPTS = 5;
 const OTP_RESEND_SECONDS = 60;
+const OTP_MAX_PER_HOUR = 5;
 const MIN_PASSWORD = 8;
 
 // A real hash to compare against when the user does not exist, so response time
@@ -48,13 +49,18 @@ async function verifyCredentials(rollNo, password) {
     ? await bcrypt.compare(password, user.password)
     : false;
   if (!ok) {
-    const failures = (user.login_failures || 0) + 1;
-    const update = { $set: { login_failures: failures } };
-    if (failures >= MAX_LOGIN_FAILURES) {
-      update.$set.lock_until = new Date(Date.now() + LOCK_MINUTES * 60000);
-      update.$set.login_failures = 0;
+    // Atomic increment so parallel guesses cannot share one counter value.
+    const after = await User.findOneAndUpdate(
+      { _id: user._id },
+      { $inc: { login_failures: 1 } },
+      { new: true, projection: { login_failures: 1 } }
+    ).select("+login_failures");
+    if (after && after.login_failures >= MAX_LOGIN_FAILURES) {
+      await User.updateOne(
+        { _id: user._id },
+        { $set: { lock_until: new Date(Date.now() + LOCK_MINUTES * 60000), login_failures: 0 } }
+      );
     }
-    await User.updateOne({ _id: user._id }, update);
     throw invalidCredentials();
   }
   if (user.status === 0) throw new HttpError(403, "Your account is deactivated. Please contact your college.");
@@ -182,11 +188,16 @@ const GENERIC_OTP_MESSAGE = "If this roll number is registered, an OTP has been 
 const sendOtp = asyncHandler(async (req, res) => {
   const roll = normRoll(req.body?.roll_no);
   if (!roll) throw badRequest("roll_no is required.");
-  const user = await User.findOne(rollQuery(roll)).select("+otp_last_sent_at email first_name status");
+  const user = await User.findOne(rollQuery(roll)).select("+otp_last_sent_at +otp_window_start +otp_window_count email first_name status");
   if (user && user.status !== 0 && user.email) {
+    const now = Date.now();
     const last = user.otp_last_sent_at ? user.otp_last_sent_at.getTime() : 0;
-    if (Date.now() - last < OTP_RESEND_SECONDS * 1000) {
-      throw new HttpError(429, `Please wait ${OTP_RESEND_SECONDS} seconds before requesting another OTP.`);
+    const windowStart = user.otp_window_start ? user.otp_window_start.getTime() : 0;
+    const inWindow = now - windowStart < 3600 * 1000;
+    const sentThisHour = inWindow ? user.otp_window_count || 0 : 0;
+    // Throttled requests get the same generic answer so registered roll numbers are not revealed.
+    if (now - last < OTP_RESEND_SECONDS * 1000 || sentThisHour >= OTP_MAX_PER_HOUR) {
+      return res.status(200).json({ message: GENERIC_OTP_MESSAGE });
     }
     const otp = String(crypto.randomInt(100000, 1000000));
     await User.updateOne(
@@ -194,9 +205,11 @@ const sendOtp = asyncHandler(async (req, res) => {
       {
         $set: {
           otp_hash: hashOtp(user._id, otp),
-          otp_expires_at: new Date(Date.now() + OTP_TTL_MINUTES * 60000),
+          otp_expires_at: new Date(now + OTP_TTL_MINUTES * 60000),
           otp_attempts: 0,
-          otp_last_sent_at: new Date(),
+          otp_last_sent_at: new Date(now),
+          otp_window_start: inWindow ? user.otp_window_start : new Date(now),
+          otp_window_count: sentThisHour + 1,
         },
         $unset: { otp: "" },
       }
@@ -216,17 +229,26 @@ async function consumeOtpAttempt(rollNo, otp) {
   const roll = normRoll(rollNo);
   const code = String(otp || "").trim();
   if (!roll || !/^\d{6}$/.test(code)) throw invalid;
-  const user = await User.findOne(rollQuery(roll)).select("+otp_hash +otp_expires_at +otp_attempts");
-  if (!user || !user.otp_hash || !user.otp_expires_at || user.otp_expires_at < new Date()) throw invalid;
-  if ((user.otp_attempts || 0) >= OTP_MAX_ATTEMPTS) {
-    throw new HttpError(429, "Too many incorrect attempts. Please request a new OTP.");
+  const candidate = await User.findOne(rollQuery(roll)).select("_id");
+  if (!candidate) throw invalid;
+  // Reserve this attempt atomically BEFORE comparing, so parallel guesses cannot exceed the limit.
+  const user = await User.findOneAndUpdate(
+    { _id: candidate._id, otp_hash: { $exists: true, $ne: null }, otp_expires_at: { $gt: new Date() }, otp_attempts: { $lt: OTP_MAX_ATTEMPTS } },
+    { $inc: { otp_attempts: 1 } },
+    { new: true }
+  ).select("+otp_hash +otp_expires_at +otp_attempts");
+  if (!user) {
+    const u = await User.findById(candidate._id).select("+otp_attempts +otp_hash").lean();
+    if (u && u.otp_hash && (u.otp_attempts || 0) >= OTP_MAX_ATTEMPTS) {
+      // Burn the code after too many failures.
+      await User.updateOne({ _id: candidate._id }, { $unset: { otp_hash: "", otp_expires_at: "" } });
+      throw new HttpError(429, "Too many incorrect attempts. Please request a new OTP.");
+    }
+    throw invalid;
   }
   const expected = Buffer.from(user.otp_hash);
   const given = Buffer.from(hashOtp(user._id, code));
-  if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) {
-    await User.updateOne({ _id: user._id }, { $inc: { otp_attempts: 1 } });
-    throw invalid;
-  }
+  if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) throw invalid;
   return user;
 }
 

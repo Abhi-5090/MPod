@@ -49,6 +49,10 @@ async function assertInterviewAccess(req, doc) {
   if (a.kind === "student") {
     if (doc.roll_no !== a.user.roll_no) throw notFound("Interview not found.");
     if (doc.tenant_id && String(doc.tenant_id) !== String(a.tenantId)) throw notFound("Interview not found.");
+    // Legacy interview without tenant_id: only if no other college has this roll number.
+    if (!doc.tenant_id && (await User.exists({ roll_no: doc.roll_no, tenant_id: { $ne: a.tenantId } }))) {
+      throw notFound("Interview not found.");
+    }
     return;
   }
   if (a.kind === "staff") {

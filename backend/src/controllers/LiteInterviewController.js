@@ -8,15 +8,22 @@ const { ownRollNo } = require("./UserController");
 const { asyncHandler } = require("../lib/http");
 
 /** POST /get-lite-interview-accuracy — student practice: scores answers and stores the attempt. */
+const PRACTICE_EVALS_PER_DAY = 20;
 const getLiteInterviewAccuracy = async (req, res) => {
   const { questions, technology, module, topic, complexity, questions_count } = req.body || {};
-  if (!Array.isArray(questions) || !questions.length || questions.length > 20) {
-    return res.status(400).json({ message: "Send between 1 and 20 questions." });
+  if (!Array.isArray(questions) || !questions.length || questions.length > 10) {
+    return res.status(400).json({ message: "Send between 1 and 10 questions." });
+  }
+  // Each evaluation costs LLM calls, so practice scoring is capped per student per day.
+  const since = new Date(Date.now() - 24 * 3600 * 1000);
+  const used = await LiteInterview.countDocuments({ roll_no: req.auth.user.roll_no, createdAt: { $gte: since } });
+  if (used >= PRACTICE_EVALS_PER_DAY) {
+    return res.status(429).json({ message: `Daily practice limit reached (${PRACTICE_EVALS_PER_DAY} evaluations per day). Try again tomorrow.` });
   }
   const items = questions.map((q) => ({
-    question: String(q?.question || "").slice(0, 1000),
-    answer: String(q?.answer || "").slice(0, 10000),
-    time: q?.time,
+    question: String(q?.question || "").slice(0, 500),
+    answer: String(q?.answer || "").slice(0, 3000),
+    time: Number.isFinite(Number(q?.time)) ? Math.max(0, Math.min(3600, Number(q.time))) : null,
   }));
   const { results, overall } = await evaluation.evaluateVerbalInterview(items);
   await LiteInterview.create({
@@ -122,7 +129,10 @@ const addInterviewQuestions = async (req, res) => {
       question: String(row.question || row.Question || "").trim().slice(0, 2000),
       answer: String(row.answer || row.Answer || "").trim().slice(0, 10000),
       company,
-      previous_asked_status: Number(row.star_status) === 1 ? 1 : 0,
+      previous_asked_status:
+        row.star_status !== undefined && row.star_status !== ""
+          ? (Number(row.star_status) === 1 ? 1 : 0)
+          : (Number(req.body.previous_asked_status) === 1 ? 1 : 0),
       created_by: req.auth.user.roll_no,
       status: 1,
     }))
@@ -208,7 +218,8 @@ const questionsByTechnology = async (req, res, next) => {
             {
               $project: {
                 _id: 0,
-                favorite: 1
+                favorite: 1,
+                doubt: 1
               }
             }
           ],
@@ -217,12 +228,9 @@ const questionsByTechnology = async (req, res, next) => {
       },
       {
         $addFields: {
-          favorite_status: {
-            $ifNull: [{ $arrayElemAt: ["$interaction.favorite", 0] }, 0]
-          },
-          doubt_status: {
-            $ifNull: [{ $arrayElemAt: ["$interaction.doubt", 0] }, 0]
-          }
+          // favourites and doubts are stored as separate interaction documents
+          favorite_status: { $ifNull: [{ $max: "$interaction.favorite" }, 0] },
+          doubt_status: { $ifNull: [{ $max: "$interaction.doubt" }, 0] }
 
         }
       },
@@ -492,60 +500,43 @@ const getInterviewQuestions = async (req, res, next) => {
     return res.status(500).json({ message: "Internal server error" })
   }
 }
-const getInterviewQuestionById = async (req, res, next) => {
-  const id = req.params.id;
-  try {
-    const result = await LiteInterviewQuestion.findOne({ _id: id });
-    if (result) {
-      return res.status(200).json(result)
-    }
-  } catch (error) {
-    console.log(error)
-    return res.status(500).json({ message: "Internal server error" })
-  }
-}
-
-const updateInterviewQuestion = async (req, res, next) => {
-  const { id, question, answer, technology, company, status } = req.body;
-  if (!id) {
-    return res.status(400).json({ message: "ID is required" });
-  }
-
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(400).json({ message: "Invalid ID format" });
-  }
-
-  // Construct the update object dynamically to avoid setting empty strings
-  const updateFields = {
-    question,
-    answer,
-    technology,
-    previous_asked_status: status,
-  };
-
-  if (company && mongoose.Types.ObjectId.isValid(company)) {
-    updateFields.company = company;
-  } else {
-    updateFields.company = null; // or omit it based on your schema
-  }
-
-  try {
-    const updatedResult = await LiteInterviewQuestion.findByIdAndUpdate(
-      id,
-      updateFields,
-      { new: true }
-    );
-
-    if (!updatedResult) {
-      return res.status(404).json({ message: "Question not found" });
-    }
-
-    return res.status(200).json(updatedResult);
-  } catch (error) {
-    console.error("Error updating interview question:", error);
-    return res.status(500).json({ message: "Internal server error" });
-  }
+const getInterviewQuestionById = async (req, res) => {
+  const id = String(req.params.id || "");
+  if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid ID" });
+  const result = await LiteInterviewQuestion.findById(id).lean();
+  if (!result) return res.status(404).json({ message: "Question not found" });
+  return res.status(200).json(result);
 };
+
+const updateInterviewQuestion = async (req, res) => {
+  const { id, question, answer, technology, company, status } = req.body || {};
+  if (!id || !mongoose.Types.ObjectId.isValid(String(id))) {
+    return res.status(400).json({ message: "Invalid ID" });
+  }
+  const set = {};
+  if (question !== undefined) {
+    const q = String(question).trim();
+    if (!q) return res.status(400).json({ message: "Question cannot be empty" });
+    set.question = q.slice(0, 2000);
+  }
+  if (answer !== undefined) set.answer = String(answer).slice(0, 10000);
+  if (technology !== undefined && technology !== "") {
+    if (!mongoose.Types.ObjectId.isValid(String(technology))) return res.status(400).json({ message: "Invalid technology" });
+    set.technology = technology;
+  }
+  // company is a list; leave it unchanged when not sent.
+  if (company !== undefined) {
+    const list = (Array.isArray(company) ? company : company ? [company] : []).map(String);
+    if (list.some((c) => !mongoose.Types.ObjectId.isValid(c))) return res.status(400).json({ message: "Invalid company" });
+    set.company = list;
+  }
+  if (status !== undefined && status !== "") set.previous_asked_status = Number(status) === 1 ? 1 : 0;
+
+  const updated = await LiteInterviewQuestion.findByIdAndUpdate(id, { $set: set }, { new: true });
+  if (!updated) return res.status(404).json({ message: "Question not found" });
+  return res.status(200).json(updated);
+};
+
 const deleteInterviewQuestion = async (req, res, next) => {
   const id = req.params.id;
   try {

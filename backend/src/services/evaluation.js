@@ -44,8 +44,9 @@ const parseJson = (raw) => {
   return JSON.parse(cleaned);
 };
 
-async function chatJson({ model, system, user, maxTokens = 1024, temperature = 0.3 }) {
-  const res = await getClient().chat.completions.create({
+async function chatJson({ model, system, user, maxTokens = 1024, temperature = 0.3, requestOptions }) {
+  const res = await getClient().chat.completions.create(
+    {
     model,
     messages: [
       { role: "system", content: system },
@@ -54,7 +55,9 @@ async function chatJson({ model, system, user, maxTokens = 1024, temperature = 0
     temperature,
     max_tokens: maxTokens,
     response_format: { type: "json_object" },
-  });
+    },
+    requestOptions
+  );
   return parseJson(res.choices?.[0]?.message?.content);
 }
 
@@ -99,6 +102,8 @@ Vary the questions across the topics. Session: ${Date.now()}.`;
       user,
       maxTokens: 80 + count * 60,
       temperature: 0.7,
+      // the student is waiting on this call
+      requestOptions: { timeout: 25 * 1000, maxRetries: 1 },
     });
     const list = (Array.isArray(data.questions) ? data.questions : [])
       .map((q) => String(q || "").replace(/^\s*\d+[.)]\s*/, "").trim())
@@ -214,6 +219,7 @@ Respond with JSON: {"accuracy": <integer 0-100>}`,
     user: `Problem description:\n${String(description || "").slice(0, 6000)}\n\n${fence("candidate_idea", idea)}`,
     maxTokens: 50,
     temperature: 0.2,
+    requestOptions: { timeout: 20 * 1000, maxRetries: 1 },
   });
   return clampScore(data.accuracy);
 }

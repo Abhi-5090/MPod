@@ -14,6 +14,7 @@ module.exports = function interviewSessionPlugin(schema) {
       device_id: { type: mongoose.Schema.Types.ObjectId, ref: "kioskDevice" },
       platform: String,
       resumes: { type: Number, default: 0 },
+      generation_failed_at: Date,
     },
     // Questions issued by the server when the attempt started. Answers are only
     // accepted for these ids; the client never supplies question text.
@@ -29,6 +30,7 @@ module.exports = function interviewSessionPlugin(schema) {
       default: null,
     },
     evaluation_lease_until: Date,
+    evaluation_lease_id: String,
     evaluation_attempts: { type: Number, default: 0 },
     evaluation_error: String,
     evaluated_at: Date,

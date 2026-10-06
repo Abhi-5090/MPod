@@ -68,6 +68,8 @@ const UserSchema = mongoose.Schema({
   otp_expires_at: { type: Date, select: false },
   otp_attempts: { type: Number, default: 0, select: false },
   otp_last_sent_at: { type: Date, select: false },
+  otp_window_start: { type: Date, select: false },
+  otp_window_count: { type: Number, select: false },
 
   // Login brute-force protection.
   login_failures: { type: Number, default: 0, select: false },
@@ -88,7 +90,7 @@ const UserSchema = mongoose.Schema({
 // Fields that must never be sent to a client.
 UserSchema.statics.SECRET_FIELDS = [
   "password", "session_sid", "session_expires_at", "admin_session_sid", "sessionToken",
-  "otp", "otp_hash", "otp_expires_at", "otp_attempts", "otp_last_sent_at",
+  "otp", "otp_hash", "otp_expires_at", "otp_attempts", "otp_last_sent_at", "otp_window_start", "otp_window_count",
   "login_failures", "lock_until",
 ];
 

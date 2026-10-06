@@ -32,10 +32,12 @@ const single = (field, kind) => {
 
 // Always remove the temp file once the response is finished, success or failure.
 const cleanupUpload = (req, res, next) => {
-  res.on("finish", () => {
+  const cleanup = () => {
     const f = req.file;
     if (f && f.path && f.path.startsWith(TMP_DIR)) fs.unlink(f.path, () => {});
-  });
+  };
+  res.on("finish", cleanup);
+  res.on("close", cleanup); // client aborted
   next();
 };
 

@@ -4,6 +4,7 @@ const CompanyInterview = require("../models/companyInterview");
 const scheduling = require("../services/scheduling");
 const { loadInterviewForAccess } = require("../services/interviewModels");
 const { asyncHandler } = require("../lib/http");
+const { istDayRange } = require("../lib/time");
 
 // Technology ("ai generated") interviews: admin scheduling, lists and the student report.
 
@@ -32,23 +33,8 @@ const getAllInterviewDetails = async (req, res) => {
     const tenant_id = new mongoose.Types.ObjectId(req.params.id); // scoped by route middleware
 
     // date query param format expected: YYYY-MM-DD (e.g., 2025-12-03)
-    let dateParam = req.query.date;
-    let targetDate;
-    if (dateParam) {
-      // parse provided date (assume server timezone or treat as midnight UTC)
-      targetDate = new Date(dateParam);
-    } else {
-      // default to yesterday
-      targetDate = new Date();
-      targetDate.setDate(targetDate.getDate() - 1);
-    }
-
-    // Build day start/end (00:00:00.000 -> 23:59:59.999) in server timezone
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    // The requested calendar day (or yesterday) in India, whatever the server's timezone.
+    const { start: startOfDay, end: endOfDay } = istDayRange(req.query.date ? String(req.query.date) : null, -1);
 
     const InterviewDetails = await Interview.aggregate([
       // match interviews whose start_date_time falls within the target day
@@ -180,6 +166,7 @@ const getAllInterviewDetails = async (req, res) => {
 
     res.status(200).json(InterviewDetails);
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ message: error.message });
     console.error("Error fetching interview details:", error);
     res.status(500).json({
       message: "Internal server error",
@@ -268,7 +255,8 @@ const getInterviewDetailsById = async (req, res) => {
       },
       {
         $addFields: {
-          module_name: "$moduleDetails.module_name"
+          module_name: "$moduleDetails.module_name",
+          module_details: { $map: { input: "$moduleDetails", as: "m", in: { _id: "$$m._id", module_name: "$$m.module_name" } } }
         }
       },
       {
@@ -281,7 +269,8 @@ const getInterviewDetailsById = async (req, res) => {
       },
       {
         $addFields: {
-          topic_name: "$topicDetails.topic_name"
+          topic_name: "$topicDetails.topic_name",
+          topic_details: { $map: { input: "$topicDetails", as: "t", in: { _id: "$$t._id", topic_name: "$$t.topic_name" } } }
         }
       },
       {
@@ -333,7 +322,10 @@ const getQuestionDetails = async (req, res, next) => {
             foreignField: "roll_no",
             localField: "roll_no",
             as: "userInfo",
+            // same college only (roll numbers can repeat across colleges)
+            let: { t: "$tenant_id" },
             pipeline: [
+              { $match: { $expr: { $or: [{ $eq: [{ $type: "$$t" }, "missing"] }, { $eq: ["$tenant_id", "$$t"] }] } } },
               {
                 $project: {
                   _id: 0,

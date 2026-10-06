@@ -4,7 +4,7 @@ const { HttpError } = require("../lib/http");
 
 // eslint-disable-next-line no-unused-vars
 module.exports = function errorHandler(err, req, res, next) {
-  if (res.headersSent) return;
+  if (res.headersSent) return next(err);
 
   if (err instanceof HttpError) {
     return res.status(err.status).json({ message: err.message, ...(err.extra || {}) });

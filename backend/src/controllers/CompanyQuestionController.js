@@ -30,7 +30,7 @@ const addCompanyQuestion = asyncHandler(async (req, res) => {
   };
   let wb;
   try {
-    wb = xlsx.readFile(req.file.path);
+    wb = xlsx.readFile(req.file.path, { sheetRows: 6000, cellFormula: false, cellHTML: false });
   } catch (_) {
     throw badRequest("Could not read the file.");
   }

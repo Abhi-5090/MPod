@@ -152,6 +152,7 @@ const publicAnswers = (doc) =>
       optimized_answer: a.optimized_answer,
       idea_check: check ? check.attempts : 0,
       matched_accuracy: check ? check.best : null,
+      final: Boolean(a.final),
     };
   });
 
@@ -173,6 +174,9 @@ async function startAttempt({ type: rawType, interviewId, principal }) {
   if (principal.kind === "student") {
     if (doc.roll_no !== principal.user.roll_no) throw notFound("Interview not found.");
     if (doc.tenant_id && String(doc.tenant_id) !== String(principal.user.tenant_id)) throw notFound("Interview not found.");
+    if (!doc.tenant_id && (await User.exists({ roll_no: doc.roll_no, tenant_id: { $ne: principal.user.tenant_id } }))) {
+      throw notFound("Interview not found.");
+    }
     if (doc.platform !== "web") throw forbidden("This interview must be taken at the mPod kiosk.");
   } else if (principal.kind === "kiosk") {
     const tenantId = await tenantOfInterview(doc);
@@ -194,7 +198,11 @@ async function startAttempt({ type: rawType, interviewId, principal }) {
     if (now.getTime() < start - env.earlyStartMinutes * 60000) {
       throw conflict("This interview has not started yet.", { code: "NOT_STARTED", start_date_time: doc.start_date_time });
     }
-    if (now.getTime() > start + env.startGraceMinutes * 60000) {
+    // If question generation failed on an earlier start, allow a retry for a while
+    // even after the normal start window (the student was on time).
+    const failedAt = doc.attempt && doc.attempt.generation_failed_at ? new Date(doc.attempt.generation_failed_at).getTime() : 0;
+    const retryWindowOpen = failedAt && now.getTime() - failedAt < 15 * 60000;
+    if (now.getTime() > start + env.startGraceMinutes * 60000 && !retryWindowOpen) {
       throw conflict("The time to start this interview has passed.", { code: "EXPIRED" });
     }
     // Claim the attempt atomically so two devices cannot start it at once.
@@ -228,7 +236,10 @@ async function startAttempt({ type: rawType, interviewId, principal }) {
     } catch (err) {
       await Model.updateOne(
         { _id: doc._id, issued_questions: { $exists: false }, "attempt.started_at": doc.attempt.started_at },
-        { $unset: { "attempt.started_at": "", "attempt.platform": "", "attempt.device_id": "" } }
+        {
+          $unset: { "attempt.started_at": "", "attempt.platform": "", "attempt.device_id": "" },
+          $set: { "attempt.generation_failed_at": new Date() },
+        }
       );
       if (err instanceof HttpError) throw err;
       console.error("[interview] question generation failed", err);
@@ -311,6 +322,8 @@ async function saveAnswer({ type, interviewId, token, body }) {
     qid,
     answer: cleanText(body.answer, max),
     time: Number.isFinite(Number(body.time)) ? Math.max(0, Math.min(36000, Number(body.time))) : null,
+    // final = the student moved on from this question; autosaves are not final.
+    final: body.final === true,
     saved_at: new Date(),
   };
   if (isCoding) {
@@ -319,13 +332,22 @@ async function saveAnswer({ type, interviewId, token, body }) {
   }
 
   const open = { status: 1, evaluation_status: null };
-  const r = await Model.updateOne({ _id: doc._id, ...open, "answers.qid": qid }, { $set: { "answers.$": entry } });
+  // A late-arriving autosave must never overwrite an answer the student already finalised.
+  const existingMatch = entry.final ? { qid } : { qid, final: { $ne: true } };
+  const setExisting = () =>
+    Model.updateOne({ _id: doc._id, ...open, answers: { $elemMatch: existingMatch } }, { $set: { "answers.$": entry } });
+  const r = await setExisting();
   if (!r.matchedCount) {
     const p = await Model.updateOne({ _id: doc._id, ...open, "answers.qid": { $ne: qid } }, { $push: { answers: entry } });
     if (!p.matchedCount) {
-      // Either submitted in the meantime or another request inserted it first; retry the $set once.
-      const again = await Model.updateOne({ _id: doc._id, ...open, "answers.qid": qid }, { $set: { "answers.$": entry } });
-      if (!again.matchedCount) throw conflict("This interview has already been submitted.", { code: "ALREADY_SUBMITTED" });
+      const again = await setExisting();
+      if (!again.matchedCount) {
+        const fresh = await Model.findById(doc._id).select("status evaluation_status answers").lean();
+        if (fresh && !isSubmitted(fresh) && (fresh.answers || []).some((a) => a.qid === qid && a.final)) {
+          return { saved: false, ignored: true, question_id: qid }; // stale autosave after final save
+        }
+        throw conflict("This interview has already been submitted.", { code: "ALREADY_SUBMITTED" });
+      }
     }
   }
   return { saved: true, question_id: qid };
@@ -342,17 +364,41 @@ async function checkIdea({ type, interviewId, token, body }) {
   const idea = cleanText(body.idea, ANSWER_LIMITS.verbal);
   if (!idea.trim()) throw badRequest("Describe your idea first.");
 
-  const existing = (doc.idea_checks || []).find((c) => c.qid === qid);
-  if (existing && existing.attempts >= MAX_IDEA_CHECKS) {
-    throw new HttpError(429, "You have used all idea checks for this problem.");
+  // Reserve one check atomically before calling the LLM so parallel requests cannot exceed the limit.
+  const open = { _id: doc._id, status: 1, evaluation_status: null };
+  const reserveExisting = () =>
+    Model.updateOne(
+      { ...open, idea_checks: { $elemMatch: { qid, attempts: { $lt: MAX_IDEA_CHECKS } } } },
+      { $inc: { "idea_checks.$.attempts": 1 } }
+    );
+  let r = await reserveExisting();
+  if (!r.matchedCount) {
+    r = await Model.updateOne(
+      { ...open, "idea_checks.qid": { $ne: qid } },
+      { $push: { idea_checks: { qid, attempts: 1, last: null, best: 0, updated_at: new Date() } } }
+    );
+    if (!r.matchedCount) r = await reserveExisting();
+    if (!r.matchedCount) {
+      const fresh = await Model.findById(doc._id).select("status evaluation_status idea_checks").lean();
+      if (fresh && !isSubmitted(fresh)) throw new HttpError(429, "You have used all idea checks for this problem.");
+      throw conflict("This interview has already been submitted.", { code: "ALREADY_SUBMITTED" });
+    }
   }
-  const accuracy = await evaluation.scoreIdea(q.description, idea);
 
-  const attempts = (existing?.attempts || 0) + 1;
-  const best = Math.max(existing?.best || 0, accuracy);
-  const record = { qid, attempts, last: accuracy, best, updated_at: new Date() };
-  const r = await Model.updateOne({ _id: doc._id, "idea_checks.qid": qid }, { $set: { "idea_checks.$": record } });
-  if (!r.matchedCount) await Model.updateOne({ _id: doc._id }, { $push: { idea_checks: record } });
+  let accuracy;
+  try {
+    accuracy = await evaluation.scoreIdea(q.description, idea);
+  } catch (err) {
+    // Give the check back if the AI call failed.
+    await Model.updateOne({ _id: doc._id, "idea_checks.qid": qid }, { $inc: { "idea_checks.$.attempts": -1 } });
+    throw new HttpError(502, "Could not check your idea right now. Please try again.");
+  }
+  const updated = await Model.findOneAndUpdate(
+    { _id: doc._id, "idea_checks.qid": qid },
+    { $set: { "idea_checks.$.last": accuracy, "idea_checks.$.updated_at": new Date() }, $max: { "idea_checks.$.best": accuracy } },
+    { new: true, projection: { idea_checks: 1 } }
+  ).lean();
+  const attempts = (updated?.idea_checks || []).find((c) => c.qid === qid)?.attempts || 1;
   return { accuracy, attempts, attempts_left: Math.max(0, MAX_IDEA_CHECKS - attempts) };
 }
 

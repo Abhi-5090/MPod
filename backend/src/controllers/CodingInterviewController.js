@@ -146,7 +146,10 @@ const getCodingReportDetails = async (req, res, next) => {
           foreignField: "roll_no",
           localField: "roll_no",
           as: "userInfo",
+          // same college only (roll numbers can repeat across colleges)
+          let: { t: "$tenant_id" },
           pipeline: [
+            { $match: { $expr: { $or: [{ $eq: [{ $type: "$$t" }, "missing"] }, { $eq: ["$tenant_id", "$$t"] }] } } },
             {
               $project: {
                 _id: 0,

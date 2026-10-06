@@ -8,6 +8,7 @@ const Tenant = require("../models/tenant");
 
 const mongoose = require('mongoose');
 const { asyncHandler } = require("../lib/http");
+const { istDayRange } = require("../lib/time");
 
 const userStats = async (req, res, next) => {
   const tenant = req.params.tid;
@@ -227,13 +228,8 @@ const getYesterdayAssignedInterviewStats = async (req, res) => {
   try {
     const tenant_id = req.params.tid;
 
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
-    const startOfYesterday = new Date(yesterday);
-
-    const endOfYesterday = new Date(yesterday);
-    endOfYesterday.setHours(23, 59, 59, 999);
+    // "Yesterday" is a calendar day in India, whatever the server's timezone.
+    const { start: startOfYesterday, end: endOfYesterday } = istDayRange(null, -1);
 
     const getPipeline = () => ([
       {
@@ -288,13 +284,8 @@ const getYesterdayAttemptedInterviewStats = async (req, res) => {
   try {
     const tenant_id = req.params.tid;
 
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
-    const startOfYesterday = new Date(yesterday);
-
-    const endOfYesterday = new Date(yesterday);
-    endOfYesterday.setHours(23, 59, 59, 999);
+    // "Yesterday" is a calendar day in India, whatever the server's timezone.
+    const { start: startOfYesterday, end: endOfYesterday } = istDayRange(null, -1);
 
     const getPipeline = () => ([
       {
@@ -355,13 +346,8 @@ const getYesterdayTechStats = async (req, res) => {
   try {
     const tenant_id = req.params.tid;
 
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
-    const startOfYesterday = new Date(yesterday);
-
-    const endOfYesterday = new Date(yesterday);
-    endOfYesterday.setHours(23, 59, 59, 999);
+    // "Yesterday" is a calendar day in India, whatever the server's timezone.
+    const { start: startOfYesterday, end: endOfYesterday } = istDayRange(null, -1);
 
     const pipeline = [
       {
@@ -430,13 +416,8 @@ const getOverAllYesterdayAssignedInterviewStats = async (req, res) => {
   try {
     // const tenant_id = req.params.tid;
 
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
-    const startOfYesterday = new Date(yesterday);
-
-    const endOfYesterday = new Date(yesterday);
-    endOfYesterday.setHours(23, 59, 59, 999);
+    // "Yesterday" is a calendar day in India, whatever the server's timezone.
+    const { start: startOfYesterday, end: endOfYesterday } = istDayRange(null, -1);
 
     const getPipeline = () => ([
       {
@@ -492,13 +473,8 @@ const getYesterdayAttemptedTechStats = async (req, res) => {
   try {
     const tenant_id = req.params.tid;
 
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
-    const startOfYesterday = new Date(yesterday);
-
-    const endOfYesterday = new Date(yesterday);
-    endOfYesterday.setHours(23, 59, 59, 999);
+    // "Yesterday" is a calendar day in India, whatever the server's timezone.
+    const { start: startOfYesterday, end: endOfYesterday } = istDayRange(null, -1);
 
     const pipeline = [
       {
@@ -565,13 +541,8 @@ const getYesterdayAttemptedTechStats = async (req, res) => {
 };
 const getAllTenantsYesterdayAssignedStats = async (req, res, next) => {
   try {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
-    const startOfYesterday = new Date(yesterday);
-
-    const endOfYesterday = new Date(yesterday);
-    endOfYesterday.setHours(23, 59, 59, 999);
+    // "Yesterday" is a calendar day in India, whatever the server's timezone.
+    const { start: startOfYesterday, end: endOfYesterday } = istDayRange(null, -1);
 
     const getTenantWisePipeline = () => [
       {
@@ -667,13 +638,8 @@ const getAllTenantsYesterdayAssignedStats = async (req, res, next) => {
 
 const getOverAllYesterdayAttemptedInterviewStats = async (req, res) => {
   try {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
-    const startOfYesterday = new Date(yesterday);
-
-    const endOfYesterday = new Date(yesterday);
-    endOfYesterday.setHours(23, 59, 59, 999);
+    // "Yesterday" is a calendar day in India, whatever the server's timezone.
+    const { start: startOfYesterday, end: endOfYesterday } = istDayRange(null, -1);
 
     // Aggregation pipeline for tenant-wise attempted interviews
     const getTenantWisePipeline = () => [
@@ -864,12 +830,7 @@ const overallStats = async (req, res) => {
 const currentStats = async (req, res) => {
   try {
     // Today IST start & end
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const startOfToday = new Date(today);
-
-    const endOfToday = new Date(today);
-    endOfToday.setHours(23, 59, 59, 999);
+    const { start: startOfToday, end: endOfToday } = istDayRange(null, 0);
 
     const now = new Date(); // current time for upcoming check
 
@@ -996,15 +957,14 @@ const getDaywiseStats = async (req, res, next) => {
       {
         $match: {
           start_date_time: {
-            $gte: new Date(new Date().setDate(new Date().getDate() - 10))
-          },
-          status:0
+            $gte: istDayRange(null, -10).start
+          }
         }
       },
       {
         $addFields: {
           date: {
-            $dateToString: { format: "%Y-%m-%d", date: "$start_date_time" }
+            $dateToString: { format: "%Y-%m-%d", date: "$start_date_time", timezone: "Asia/Kolkata" }
           }
         }
       },

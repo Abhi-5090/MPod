@@ -15,7 +15,7 @@ const addTopic = async (req, res) => {
   }
   let wb;
   try {
-    wb = xlsx.readFile(req.file.path);
+    wb = xlsx.readFile(req.file.path, { sheetRows: 6000, cellFormula: false, cellHTML: false });
   } catch (_) {
     return res.status(400).json({ message: "Could not read the file." });
   }

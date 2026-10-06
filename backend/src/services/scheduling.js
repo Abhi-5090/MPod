@@ -237,7 +237,7 @@ async function scheduleBulk(req, rawType) {
   const start = validateStart(req.body.start_date_time);
   const fields = await buildTypeFields(type, req.body);
 
-  const rows = readSheetRows(req.file.path);
+  const rows = readSheetRows(req.file.path, MAX_BULK_ROWS);
   if (!rows.length) throw badRequest("The file has no rows.");
   if (rows.length > MAX_BULK_ROWS) throw badRequest(`A file can have at most ${MAX_BULK_ROWS} rows.`);
 
@@ -276,10 +276,11 @@ async function scheduleBulk(req, rawType) {
   };
 }
 
-function readSheetRows(filePath) {
+// Parses at most `maxRows` data rows (+ header) so a huge sheet cannot block the server.
+function readSheetRows(filePath, maxRows = 5000) {
   let wb;
   try {
-    wb = xlsx.readFile(filePath, { dense: true });
+    wb = xlsx.readFile(filePath, { dense: true, sheetRows: maxRows + 2, cellFormula: false, cellHTML: false });
   } catch (_) {
     throw badRequest("Could not read the file. Upload a valid .xlsx or .csv file.");
   }
@@ -346,8 +347,15 @@ async function deleteScheduled(req, rawType, id) {
   if (tenantId) await credits.ensureOpeningBalance(tenantId);
   let refunded = false;
   await withTransaction(async (session) => {
-    const del = await Model.deleteOne({ _id: doc._id }, session ? { session } : {});
-    if (!del.deletedCount) throw notFound("Interview not found.");
+    // When refunding, delete only if it is still unstarted (the student may start it right now).
+    const filter = neverStarted ? { _id: doc._id, status: 1, "attempt.started_at": { $exists: false } } : { _id: doc._id };
+    const del = await Model.deleteOne(filter, session ? { session } : {});
+    if (!del.deletedCount) {
+      if (neverStarted && (await Model.exists({ _id: doc._id }).session(session || null))) {
+        throw conflict("The student has just started this interview; it can no longer be deleted with a refund.");
+      }
+      throw notFound("Interview not found.");
+    }
     if (neverStarted && tenantId) {
       refunded = await credits.refundForInterview(
         { tenantId, interviewId: doc._id, interviewType: type, rollNo: doc.roll_no, actorId: req.auth.user._id },

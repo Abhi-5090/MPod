@@ -1,8 +1,10 @@
+const crypto = require("crypto");
 const env = require("../config/env");
 const evaluation = require("./evaluation");
 const { modelFor, normaliseType } = require("./interviewModels");
 
-const LEASE_MS = 10 * 60 * 1000;
+const LEASE_MS = 5 * 60 * 1000;
+const HEARTBEAT_MS = 60 * 1000; // lease is renewed while the job is running
 const MAX_ATTEMPTS = 3;
 const SWEEP_MS = 60 * 1000;
 
@@ -12,7 +14,7 @@ let sweepTimer = null;
 
 // Claims an interview for evaluation. The lease makes this safe across several
 // server processes: only one can hold a valid lease at a time.
-async function claim(Model, id) {
+async function claim(Model, id, leaseId) {
   const now = new Date();
   return Model.findOneAndUpdate(
     {
@@ -23,7 +25,11 @@ async function claim(Model, id) {
       ],
     },
     {
-      $set: { evaluation_status: "processing", evaluation_lease_until: new Date(now.getTime() + LEASE_MS) },
+      $set: {
+        evaluation_status: "processing",
+        evaluation_lease_until: new Date(now.getTime() + LEASE_MS),
+        evaluation_lease_id: leaseId,
+      },
       $inc: { evaluation_attempts: 1 },
     },
     { new: true }
@@ -56,12 +62,19 @@ async function evaluateDoc(type, doc) {
 
 async function runJob(type, id) {
   const Model = modelFor(type);
-  const doc = await claim(Model, id);
+  const leaseId = crypto.randomBytes(12).toString("hex");
+  const doc = await claim(Model, id, leaseId);
   if (!doc) return; // already done or held by someone else
+  // Only the current lease holder may renew or finish the job.
+  const mine = { _id: doc._id, evaluation_status: "processing", evaluation_lease_id: leaseId };
+  const heartbeat = setInterval(() => {
+    Model.updateOne(mine, { $set: { evaluation_lease_until: new Date(Date.now() + LEASE_MS) } }).catch(() => {});
+  }, HEARTBEAT_MS);
+  heartbeat.unref();
   try {
     const out = await evaluateDoc(type, doc);
     await Model.updateOne(
-      { _id: doc._id, evaluation_status: "processing" },
+      mine,
       {
         $set: {
           question_details: out.question_details,
@@ -71,6 +84,7 @@ async function runJob(type, id) {
           evaluated_at: new Date(),
           evaluation_error: null,
           evaluation_lease_until: null,
+          evaluation_lease_id: null,
         },
       }
     );
@@ -78,9 +92,10 @@ async function runJob(type, id) {
     console.error(`[evaluation] ${type} ${doc._id} attempt ${doc.evaluation_attempts} failed:`, err.message);
     const failed = doc.evaluation_attempts >= MAX_ATTEMPTS;
     await Model.updateOne(
-      { _id: doc._id, evaluation_status: "processing" },
+      mine,
       {
         $set: {
+          evaluation_lease_id: null,
           evaluation_status: failed ? "failed" : "pending",
           evaluation_error: String(err.message || err).slice(0, 500),
           // back off before the next try
@@ -88,6 +103,8 @@ async function runJob(type, id) {
         },
       }
     );
+  } finally {
+    clearInterval(heartbeat);
   }
 }
 
