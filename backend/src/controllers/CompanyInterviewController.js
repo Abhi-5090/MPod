@@ -109,6 +109,7 @@ const getAllInterviewDetails = async (req, res) => {
           status: 1,
           evaluation_status: 1,
           evaluation_waiting_for_ai: 1,
+          evaluation_mode: 1,
           evaluation_error: 1,
           "attempt.started_at": 1
         }

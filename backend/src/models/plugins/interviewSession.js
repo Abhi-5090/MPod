@@ -32,6 +32,10 @@ module.exports = function interviewSessionPlugin(schema) {
     evaluation_lease_until: Date,
     evaluation_lease_id: String,
     evaluation_waiting_for_ai: { type: Boolean, default: false },
+    // "ai" or "provisional" (scored without AI while it was unavailable; replaced later)
+    evaluation_mode: { type: String, enum: ["ai", "provisional", null], default: null },
+    ai_rescore_pending: { type: Boolean, default: false },
+    rescore_next_at: Date,
     evaluation_outage_retries: { type: Number, default: 0 },
     evaluation_attempts: { type: Number, default: 0 },
     evaluation_error: String,

@@ -344,6 +344,13 @@ function Report(props) {
                     </button>
                 </div>
             )}
+            {interviewDetails && interviewDetails.evaluation_mode === "provisional" && (
+                <div role="status" style={{ position: "relative", zIndex: 5, margin: "130px auto -110px", maxWidth: 1100, padding: "12px 16px", borderRadius: 8, background: "#fff3cd", color: "#664d03", border: "1px solid #ffe69c" }}>
+                    <strong>Provisional score.</strong> The AI reviewer was unavailable when you submitted, so these scores were
+                    calculated automatically from how completely your answers cover the key points{" "}
+                    (and the model answer, where one exists). The full AI evaluation will replace them automatically - check back later.
+                </div>
+            )}
             <div className="tf-section flat-blog-details" style={{ padding: "60px" }}>
 
                 <div className="container" >

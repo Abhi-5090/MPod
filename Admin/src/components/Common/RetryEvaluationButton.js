@@ -6,7 +6,7 @@ import { toast } from "react-toastify"
 import { apiUrl, getErrorMessage } from "../../config/api"
 
 // Re-queues the AI scoring of a submitted interview (failed or waiting for the AI).
-const RetryEvaluationButton = ({ interviewId, interviewType, title }) => {
+const RetryEvaluationButton = ({ interviewId, interviewType, title, label }) => {
   const [busy, setBusy] = useState(false)
   const retry = async () => {
     setBusy(true)
@@ -21,7 +21,7 @@ const RetryEvaluationButton = ({ interviewId, interviewType, title }) => {
   }
   return (
     <Button color="warning" size="sm" className="me-2" onClick={retry} disabled={busy} title={title || ""}>
-      {busy ? "Queuing..." : "Retry evaluation"}
+      {busy ? "Queuing..." : label || "Retry evaluation"}
     </Button>
   )
 }
@@ -30,6 +30,7 @@ RetryEvaluationButton.propTypes = {
   interviewId: PropTypes.string.isRequired,
   interviewType: PropTypes.string.isRequired,
   title: PropTypes.string,
+  label: PropTypes.string,
 }
 
 export default RetryEvaluationButton

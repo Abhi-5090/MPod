@@ -117,18 +117,20 @@ const TOPIC_TEMPLATES = [
 async function fallbackTechnologyQuestions({ doc, tech, modules, topicIds, count }) {
   const out = [];
   const seen = new Set();
-  const add = (question, source) => {
+  const add = (question, source, reference) => {
     const key = question.trim().toLowerCase();
     if (!question.trim() || seen.has(key) || out.length >= count) return;
     seen.add(key);
-    out.push({ qid: `q${out.length + 1}`, question: question.trim(), source });
+    const q = { qid: `q${out.length + 1}`, question: question.trim(), source };
+    if (reference && String(reference).trim()) q.reference = String(reference).slice(0, 5000); // model answer, never sent to students
+    out.push(q);
   };
   // 1. Curated practice bank for this technology.
   const bank = await LiteInterviewQuestion.aggregate([
     { $match: { technology: new mongoose.Types.ObjectId(String(doc.technology)), status: { $ne: 0 } } },
     { $sample: { size: count * 2 } },
   ]);
-  bank.forEach((b) => add(String(b.question || ""), "bank"));
+  bank.forEach((b) => add(String(b.question || ""), "bank", b.answer));
   // 2. Templates over the interview's topics (or modules if no topics were chosen).
   const items = [];
   modules.forEach((m) => {
@@ -189,7 +191,7 @@ async function interviewSummary(type, doc) {
 }
 
 const publicQuestion = (q) => {
-  const { source_id, source, ...rest } = q; // eslint-disable-line no-unused-vars
+  const { source_id, source, reference, ...rest } = q; // eslint-disable-line no-unused-vars
   return { id: q.qid, ...rest };
 };
 

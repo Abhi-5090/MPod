@@ -366,7 +366,7 @@ const Dashboard = () => {
                                   {"expired"}
                                 </label>
                               )}
-                              {["evaluating", "in progress", "evaluation failed"].includes(interview.interview_status) && (
+                              {["evaluating", "scoring delayed", "in progress", "evaluation failed"].includes(interview.interview_status) && (
                                 <label style={{ padding: "5px", fontSize: "15px", color: "#fff", background: "rgba(200, 160, 40, 0.25)", borderRadius: "10px" }}>
                                   {interview.interview_status}
                                 </label>
@@ -390,7 +390,12 @@ const Dashboard = () => {
                             </td>
                             <td>
                               {interview.interview_status === "attended" && (
-                                <button style={{ padding: "5px", background: "#008738", border: "none" }} onClick={() => handleViewClick(interview._id, interview.interview_type)}>View</button>)}
+                                <>
+                                  <button style={{ padding: "5px", background: "#008738", border: "none" }} onClick={() => handleViewClick(interview._id, interview.interview_type)}>View</button>
+                                  {interview.provisional && (
+                                    <span title="Scored without AI while the AI reviewer was unavailable; it will be updated automatically" style={{ marginLeft: 6, fontSize: 12, color: "#ffd166" }}>provisional</span>
+                                  )}
+                                </>)}
                             </td>
                           </tr>
                         ))}

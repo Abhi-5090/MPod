@@ -293,8 +293,8 @@ They didn't start within 5 minutes of the start time. Schedule a new one. Deleti
 mPod can't reach the AI right now, usually because of a wrong or restricted OpenAI key, or a quota limit. The banner shows the exact reason. While it lasts:
 - Interviews still run. Technology questions come from the question bank and the selected syllabus topics instead of being written by the AI.
 - The coding idea check is skipped, so students go straight on to writing code.
-- Answers are saved. Students see "Interview submitted… your report will be ready automatically".
-- Interviews show **Waiting for AI** in the lists and are scored automatically once the AI works again. You can also click **Retry evaluation**.
+- **Technology and company interviews get a provisional score straight away.** It is calculated without AI from how well each answer covers the question's key points, compared with the bank's model answer where one exists, and from how complete the answer is. The report and the lists mark it **Provisional**. When the AI is back, the interview is re-scored by the AI automatically, or immediately if you click **Re-score with AI**, and the report updates.
+- **Coding interviews wait for the AI** (status **Waiting for AI**), because correctness of code can't be judged fairly without it. Their answers are saved and they are scored automatically once the AI works again, or when you click **Retry evaluation**.
 
 To fix it, set a working key in `backend/.env` (see the README), then restart the backend. Platform admins can click **Check again** on the banner.
 

@@ -424,6 +424,8 @@ const getQuestionDetails = async (req, res, next) => {
         user_details: interviewData.userInfo?.[0] || null,
         question_details: interviewData.question_details || [],
         overall_analysis: interviewData.overall_analysis?.[0] || null,
+        evaluation_mode: interviewData.evaluation_mode || "ai",
+        ai_rescore_pending: Boolean(interviewData.ai_rescore_pending),
         emotions: interviewData.emotions || null,
         start_date_time: interviewData.start_date_time,
         level: interviewData.level,

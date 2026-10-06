@@ -507,6 +507,8 @@ const getTraineePastInterviews = async (req, res, next) => {
           status: 1,
           question_details: 1,
           evaluation_status: 1,
+          evaluation_mode: 1,
+          evaluation_waiting_for_ai: 1,
           started: { $cond: [{ $ifNull: ["$attempt.started_at", false] }, true, false] },
           is_question_empty: {
             $or: [
@@ -641,9 +643,12 @@ const getTraineePastInterviews = async (req, res, next) => {
       ...companyInterviews
     ].filter(Boolean);
     finalInterviewsList.forEach((it) => {
-      if (it.evaluation_status === "pending" || it.evaluation_status === "processing") it.interview_status = "evaluating";
-      else if (it.evaluation_status === "failed") it.interview_status = "evaluation failed";
+      if (it.evaluation_status === "pending" || it.evaluation_status === "processing") {
+        it.interview_status = it.evaluation_waiting_for_ai ? "scoring delayed" : "evaluating";
+      } else if (it.evaluation_status === "failed") it.interview_status = "evaluation failed";
       else if (it.status === 1 && it.started) it.interview_status = "in progress";
+      it.provisional = it.evaluation_mode === "provisional";
+      delete it.evaluation_waiting_for_ai;
       delete it.started;
     });
     finalInterviewsList.sort((a, b) => {

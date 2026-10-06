@@ -13,7 +13,9 @@ function listStatus(row, now = Date.now()) {
 const decorate = (rows) =>
   rows.map((r) => {
     const out = { ...r, interview_status: listStatus(r) };
-    out.evaluation_error = r.evaluation_status === "failed" || r.evaluation_waiting_for_ai ? r.evaluation_error || null : null;
+    out.provisional = r.evaluation_mode === "provisional";
+    out.evaluation_error =
+      r.evaluation_status === "failed" || r.evaluation_waiting_for_ai || out.provisional ? r.evaluation_error || null : null;
     delete out.attempt;
     return out;
   });

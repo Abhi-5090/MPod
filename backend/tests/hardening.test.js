@@ -189,37 +189,74 @@ describe("AI outage: the interview flow keeps working", () => {
     expect(st.body.questions[0].source).toBeUndefined();
   });
 
-  test("scoring waits for the AI instead of failing, then completes", async () => {
+  test("while the AI is down a provisional score is given, then replaced by the AI score", async () => {
     const iv = await techInterview();
     const agent = await loginAs(s.studentA);
     const st = await agent.post("/backend/api/interview-session/start").send({ interview_id: String(iv._id), interview_type: "ai generated" });
+    const qid = st.body.questions[0].id;
+    await request(app).post("/backend/api/interview-session/answer").set("X-Attempt-Token", st.body.attempt_token)
+      .send({ interview_id: String(iv._id), interview_type: "ai generated", question_id: qid, answer: "Inheritance lets a subclass reuse the fields and methods of a parent class, for example a Dog class extends Animal.", final: true });
     const spy = jest.spyOn(evaluation, "evaluateVerbalInterview").mockRejectedValue(outage());
     await request(app).post("/backend/api/interview-session/submit").set("X-Attempt-Token", st.body.attempt_token)
       .send({ interview_id: String(iv._id), interview_type: "ai generated" });
-    for (let i = 0; i < 40 && !(await Interview.findById(iv._id)).evaluation_waiting_for_ai; i++) {
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    let doc = await Interview.findById(iv._id).lean();
-    expect(doc.evaluation_status).toBe("pending");
-    expect(doc.evaluation_waiting_for_ai).toBe(true);
-    expect(doc.evaluation_attempts).toBe(0);
-    const status = await request(app).get(`/backend/api/interview-session/status?interview_id=${iv._id}&interview_type=ai%20generated`).set("X-Attempt-Token", st.body.attempt_token);
-    expect(status.body.waiting_for_ai).toBe(true);
-    // admins see it in the list
-    const admin = await loginAs(s.adminA, { admin: true });
-    const list = await admin.get(`/backend/api/get-all-interviewee-details/${s.tenantA._id}?date=${new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10)}`);
-    expect(list.body.find((r) => String(r._id) === String(iv._id)).interview_status).toBe("Waiting for AI");
-    // AI comes back: staff retry completes it
-    spy.mockRestore();
-    expect((await admin.post("/backend/api/interview-session/retry-evaluation").send({ interview_id: String(iv._id), interview_type: "ai generated" })).status).toBe(200);
     for (let i = 0; i < 60 && (await Interview.findById(iv._id)).status !== 0; i++) {
       // eslint-disable-next-line no-await-in-loop
       await new Promise((r) => setTimeout(r, 50));
     }
-    doc = await Interview.findById(iv._id).lean();
+    let doc = await Interview.findById(iv._id).lean();
     expect(doc.status).toBe(0);
-    expect(doc.evaluation_waiting_for_ai).toBe(false);
+    expect(doc.evaluation_mode).toBe("provisional");
+    expect(doc.ai_rescore_pending).toBe(true);
+    expect(doc.question_details).toHaveLength(3);
+    expect(doc.question_details[0].accuracy).toBeGreaterThan(0);
+    expect(doc.question_details[0].analysis).toMatch(/Provisional/);
+    expect(doc.question_details[1].accuracy).toBe(0); // unanswered
+
+    // the student report is available and labelled provisional
+    const report = await agent.get(`/backend/api/get-question-details/${iv._id}/ai%20generated/${s.studentA.roll_no}`);
+    expect(report.status).toBe(200);
+    expect(report.body.evaluation_mode).toBe("provisional");
+    // admins see it as attempted + provisional
+    const admin = await loginAs(s.adminA, { admin: true });
+    const day = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
+    const row = (await admin.get(`/backend/api/get-all-interviewee-details/${s.tenantA._id}?date=${day}`)).body.find((r) => String(r._id) === String(iv._id));
+    expect(row.interview_status).toBe("Attempted");
+    expect(row.provisional).toBe(true);
+
+    // AI comes back: staff re-score replaces the provisional result
+    spy.mockRestore();
+    expect((await admin.post("/backend/api/interview-session/retry-evaluation").send({ interview_id: String(iv._id), interview_type: "ai generated" })).status).toBe(200);
+    for (let i = 0; i < 60 && (await Interview.findById(iv._id)).evaluation_mode !== "ai"; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    doc = await Interview.findById(iv._id).lean();
+    expect(doc.evaluation_mode).toBe("ai");
+    expect(doc.ai_rescore_pending).toBe(false);
+    expect(doc.question_details[0].provisional).toBeUndefined();
+    queue.stop();
+  });
+
+  test("coding interviews wait for the AI (no guessed code scores)", async () => {
+    const CodingInterview = require("../src/models/codingInterview");
+    const iv = await CodingInterview.create({
+      platform: "web", roll_no: s.studentA.roll_no, tenant_id: s.tenantA._id, start_date_time: new Date(Date.now() - 60000),
+      level: "easy", questions_count: "1", status: 1,
+    });
+    const agent = await loginAs(s.studentA);
+    const st = await agent.post("/backend/api/interview-session/start").send({ interview_id: String(iv._id), interview_type: "coding" });
+    await request(app).post("/backend/api/interview-session/answer").set("X-Attempt-Token", st.body.attempt_token)
+      .send({ interview_id: String(iv._id), interview_type: "coding", question_id: "q1", answer: "def f(): return 1", final: true });
+    jest.spyOn(evaluation, "evaluateCodingInterview").mockRejectedValue(outage());
+    await request(app).post("/backend/api/interview-session/submit").set("X-Attempt-Token", st.body.attempt_token)
+      .send({ interview_id: String(iv._id), interview_type: "coding" });
+    for (let i = 0; i < 40 && !(await CodingInterview.findById(iv._id)).evaluation_waiting_for_ai; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    const doc = await CodingInterview.findById(iv._id).lean();
+    expect(doc.status).toBe(1);
+    expect(doc.evaluation_waiting_for_ai).toBe(true);
     queue.stop();
   });
 
@@ -248,5 +285,31 @@ describe("AI outage: the interview flow keeps working", () => {
     expect(res.body.ai.available).toBe(false);
     expect(res.body.ai.message).toMatch(/model\.request/);
     aiStatus.recordSuccess();
+  });
+});
+
+describe("provisional scoring engine", () => {
+  const { scoreAnswer, scoreInterview } = require("../src/services/provisionalScoring");
+  const q = "What is Inheritance in Java? Explain it with an example.";
+  test("a relevant, complete answer scores well; empty and off-topic answers score low", () => {
+    const good = scoreAnswer({ question: q, answer: "Inheritance in Java lets a subclass reuse and extend the fields and methods of a parent class using extends. For example, class Dog extends Animal and inherits eat() while adding bark()." });
+    const off = scoreAnswer({ question: q, answer: "I like to play cricket on weekends with my friends near the stadium in the evening." });
+    const empty = scoreAnswer({ question: q, answer: "" });
+    expect(good.accuracy).toBeGreaterThanOrEqual(60);
+    expect(off.accuracy).toBeLessThan(30);
+    expect(empty.accuracy).toBe(0);
+    expect(good.provisional).toBe(true);
+  });
+  test("model answer similarity is used when available", () => {
+    const reference = "The JVM is the Java Virtual Machine that executes Java bytecode and manages memory with garbage collection.";
+    const close = scoreAnswer({ question: "What is the JVM?", answer: "The Java Virtual Machine runs compiled Java bytecode and handles memory through garbage collection on every platform.", reference });
+    const far = scoreAnswer({ question: "What is the JVM?", answer: "It is a type of database used to store tables and rows for web applications.", reference });
+    expect(close.accuracy).toBeGreaterThan(far.accuracy + 30);
+  });
+  test("overall analysis has the report shape", () => {
+    const { results, overall } = scoreInterview([{ question: q, answer: "Subclass extends parent class." }, { question: q, answer: "" }]);
+    expect(results).toHaveLength(2);
+    expect(Object.keys(overall.interview_parameters)).toHaveLength(7);
+    expect(overall.areas_of_improvement.join(" ")).toMatch(/not answered/);
   });
 });

@@ -146,10 +146,10 @@ const InterviewsList = (props) => {
     {
       dataField: "interview_status",
       text: "Status",
-      formatter: (status) => (
-        <Badge color={statusColor(status)}>
+      formatter: (status, row) => (
+        <><Badge color={statusColor(status)}>
           {status}
-        </Badge>
+        </Badge>{row && row.provisional && (<Badge color="warning" className="ms-1" title={row.evaluation_error || "Scored without AI"}>Provisional</Badge>)}</>
       ),
     },
     { dataField: "average_accuracy", text: "Total Accuracy" },
@@ -159,6 +159,7 @@ const InterviewsList = (props) => {
       isDummyField: true,
       formatter: (cell, interview) =>
         interview.interview_status === "Attempted" ? (
+          <>
           <a
             href={studentReportUrl("report", {
               roll_no: interview.roll_no,
@@ -171,6 +172,10 @@ const InterviewsList = (props) => {
           >
             View
           </a>
+            {interview.provisional && (
+              <RetryEvaluationButton interviewId={interview._id} interviewType="ai generated" label="Re-score with AI" title="Replace the provisional score with the AI evaluation" />
+            )}
+          </>
         ) : (
           <>
             {interview.interview_status === "Upcoming" && (
