@@ -6,6 +6,7 @@ import { Row, Col } from "reactstrap"
 
 import { setBreadcrumbItems } from "../../store/actions"
 import { useAuth } from "../../context/AuthContext"
+import { isPlatformRole } from "../../config/roles"
 import TotalStats from "./stats/totalStats"
 import TotalSuperAdminStats from "./SuperAdmin/totalSuperAdminStats"
 
@@ -40,7 +41,7 @@ const Dashboard = props => {
           </div>
         )}
       </div>
-      {user.role === "superadmin" ? (
+      {isPlatformRole(user.role) ? (
         <Row>
           <TotalSuperAdminStats />
         </Row>

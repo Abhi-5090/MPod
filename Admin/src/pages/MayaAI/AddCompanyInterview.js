@@ -20,7 +20,7 @@ import { useNavigate } from "react-router-dom"
 import { toast } from "react-toastify";
 import * as XLSX from "xlsx";
 import { apiUrl, getErrorMessage } from "../../config/api";
-import { useAuth } from "../../context/AuthContext";
+import useTenantSelection, { TenantSelect } from "./useTenantSelection";
 
 const statusOptions = [
   { label: "Active", value: "1" },
@@ -51,7 +51,8 @@ const interviewTypeOptions = [
 const AddCompanyInterview = (props) => {
   document.title = "Add Company Interview | Mpod";
 
-  const { user } = useAuth();
+  const tenantSelection = useTenantSelection();
+  const { user, tenantId } = tenantSelection;
   const [data, setData] = useState({});
   const [selectedType, setSelectedType] = useState(null);
   const [companies, setCompanies] = useState([]);
@@ -67,6 +68,8 @@ const AddCompanyInterview = (props) => {
   const [selectedTag, setSelectedTag] = useState(null);
   const [file, setFile] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [failedResults, setFailedResults] = useState([]);
+  const [bulkTotal, setBulkTotal] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -160,6 +163,10 @@ const AddCompanyInterview = (props) => {
   };
 
   const AddInterview = async () => {
+    if (!tenantId) {
+      toast.warn("Select a college");
+      return;
+    }
     if (
       !selectedPlatform ||
       !selectedInterviewType ||
@@ -195,14 +202,16 @@ const AddCompanyInterview = (props) => {
       questions_count: data.no_of_questions,
       status: selectedStatus.value,
       created_by: user.roll_no,
-      tenant_id: user.t_id,
+      tenant_id: tenantId,
     };
 
     setIsLoading(true);
+    setFailedResults([]);
     try {
       if (selectedInterviewType.value === "single") {
         await axios.post(apiUrl('add-company-interview'), dataList);
         toast.success("Interview added successfully!");
+        navigate(`/company-interviews-list`);
       } else {
         const formData = new FormData();
         formData.append('file', file);
@@ -227,11 +236,18 @@ const AddCompanyInterview = (props) => {
         } else {
           toast.success("Bulk interviews added successfully!");
         }
-        if (result.failed > 0) {
-          toast.warn(`${result.failed} interview(s) could not be scheduled`);
+        const failed = Array.isArray(result.results)
+          ? result.results.filter((r) => r.status === "failed")
+          : [];
+        if (result.failed > 0 || failed.length) {
+          // Stay on the page and list the rows that could not be scheduled.
+          setFailedResults(failed);
+          setBulkTotal(result.total || (Array.isArray(result.results) ? result.results.length : 0));
+          toast.warn(`${result.failed || failed.length} interview(s) could not be scheduled`);
+        } else {
+          navigate(`/company-interviews-list`);
         }
       }
-      navigate(`/company-interviews-list`);
     } catch (error) {
       // e.g. 400 insufficient credits
       toast.error(getErrorMessage(error, "Something went wrong. Please try again."));
@@ -259,6 +275,7 @@ const AddCompanyInterview = (props) => {
             <CardBody>
               <h4 className="card-title">Add Company Interview</h4>
               <AvForm className="needs-validation">
+                <TenantSelect {...tenantSelection} id="interviewTenant" className="mb-3" />
                 <Row>
                   <Col md="6">
                     <div className="mb-3">
@@ -428,6 +445,28 @@ const AddCompanyInterview = (props) => {
         </Col>
         <Col xl="6">
           <h3>Available Questions: {availableQuestions ?? "-"}</h3>
+          {failedResults.length > 0 && (
+            <div className="mt-4">
+              <div className="card border-danger shadow-sm">
+                <div className="card-header bg-danger text-white">
+                  <h5 className="mb-0">Failed Interview Creations</h5>
+                  <small>{failedResults.length} out of {bulkTotal} interviews failed</small>
+                </div>
+                <ul className="list-group list-group-flush">
+                  {failedResults.map((item, index) => (
+                    <li className="list-group-item d-flex align-items-start" key={index}>
+                      <div className="me-3">
+                        <span className="badge bg-danger rounded-pill">{item.roll_no || "No roll no"}</span>
+                      </div>
+                      <div>
+                        <strong>Reason:</strong> {item.reason || item.message}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
         </Col>
       </Row>
     </React.Fragment>

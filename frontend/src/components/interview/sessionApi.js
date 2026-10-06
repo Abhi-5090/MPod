@@ -1,12 +1,13 @@
 import api, { rememberAttemptToken } from "../../api/axiosInstance";
 
 // Thin client for the server-owned interview session.
-export function createSessionClient(session) {
+export function createSessionClient(session, { rememberToken = false } = {}) {
   const token = session.attempt_token;
   const id = String(session.interview._id);
   const type = session.interview.interview_type;
   const headers = { "X-Attempt-Token": token };
-  rememberAttemptToken(id, token);
+  // Only the kiosk keeps the token, so its report screen can load right after the interview.
+  if (rememberToken) rememberAttemptToken(id, token);
   const base = { interview_id: id, interview_type: type };
 
   return {

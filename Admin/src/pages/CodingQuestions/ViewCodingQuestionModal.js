@@ -3,14 +3,12 @@ import PropTypes from 'prop-types';
 import DOMPurify from 'dompurify';
 import { Modal, ModalHeader, ModalBody } from 'reactstrap';
 
-// Decode the few entities the editor stores, then sanitize before injecting.
+// Sanitize the stored HTML as is. Escaped &lt;/&gt; must stay escaped so they render as
+// literal text (e.g. "<vector>" in a description) and cannot turn into markup.
 const renderHTML = (html) => {
   if (html === null || html === undefined) return { __html: '' };
-  const decoded = String(html)
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
-  return { __html: DOMPurify.sanitize(decoded) };
+  const cleaned = String(html).replace(/&nbsp;/g, ' ');
+  return { __html: DOMPurify.sanitize(cleaned) };
 };
 
 // Strip HTML tags and decode entities for clean text blocks (rendered as text, not HTML).

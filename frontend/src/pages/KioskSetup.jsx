@@ -42,9 +42,13 @@ function KioskSetup() {
 
   const unregister = async () => {
     if (!window.confirm("Unregister this kiosk? Students will not be able to use it until it is registered again.")) return;
-    await api.post("kiosk/unregister", {}, { skipAuthRedirect: true }).catch(() => {});
-    setCurrent(null);
-    setDone(null);
+    try {
+      await api.post("kiosk/unregister", {}, { skipAuthRedirect: true });
+      setCurrent(null);
+      setDone(null);
+    } catch (err) {
+      setError(errorMessage(err, "Could not unregister this kiosk."));
+    }
   };
 
   return (

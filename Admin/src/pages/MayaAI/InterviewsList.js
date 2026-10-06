@@ -10,7 +10,7 @@ import { saveAs } from "file-saver";
 import { toast } from "react-toastify";
 import { setBreadcrumbItems } from "../../store/actions";
 import { apiUrl, getErrorMessage } from "../../config/api";
-import { useAuth } from "../../context/AuthContext";
+import useTenantSelection, { TenantSelect } from "./useTenantSelection";
 import LoadState from "../../components/Common/LoadState";
 import ConfirmModal from "../../components/Common/ConfirmModal";
 import {
@@ -25,7 +25,8 @@ const joinList = (value) => (Array.isArray(value) ? value.join(", ") : value || 
 const InterviewsList = (props) => {
   document.title = "Interviews List | Mpod";
 
-  const { user } = useAuth();
+  const tenantSelection = useTenantSelection();
+  const { tenantId, tenantName } = tenantSelection;
   const [interviewsData, setInterviewsData] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDate, setFilterDate] = useState(getYesterdayDateString()); // Holds selected date
@@ -48,10 +49,16 @@ const InterviewsList = (props) => {
   // Fetch interviews for a specific date (YYYY-MM-DD).
   const fetchInterviewsData = useCallback(
     async (dateString) => {
+      if (!tenantId) {
+        setInterviewsData([]);
+        setError(null);
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       setError(null);
       try {
-        const res = await axios.get(apiUrl(`get-all-interviewee-details/${user.t_id}`), {
+        const res = await axios.get(apiUrl(`get-all-interviewee-details/${tenantId}`), {
           params: dateString ? { date: dateString } : {},
         });
         setInterviewsData(Array.isArray(res.data) ? res.data : []);
@@ -62,7 +69,7 @@ const InterviewsList = (props) => {
         setLoading(false);
       }
     },
-    [user.t_id]
+    [tenantId]
   );
 
   useEffect(() => {
@@ -85,17 +92,8 @@ const InterviewsList = (props) => {
   );
 
   const filteredData = useMemo(() => {
+    // The server already returns only the interviews for the requested IST day.
     let filtered = interviewsData;
-    if (filterDate) {
-      const selectedDate = new Date(filterDate).toDateString();
-      filtered = filtered.filter((interview) => {
-        if (!interview.start_date_time_ist) return true;
-        const interviewDate = new Date(
-          interview.start_date_time_ist.split(" ")[0].split("-").reverse().join("-")
-        );
-        return interviewDate.toDateString() === selectedDate;
-      });
-    }
     if (statusFilter !== "All") {
       filtered = filtered.filter((interview) => interview.interview_status === statusFilter);
     }
@@ -112,7 +110,7 @@ const InterviewsList = (props) => {
       );
     }
     return filtered;
-  }, [interviewsData, filterDate, statusFilter, technologyFilter, searchTerm]);
+  }, [interviewsData, statusFilter, technologyFilter, searchTerm]);
 
   const upcomingCount = filteredData.filter((i) => i.interview_status === "Upcoming").length;
   const attemptedCount = filteredData.filter((i) => i.interview_status === "Attempted").length;
@@ -174,9 +172,16 @@ const InterviewsList = (props) => {
             View
           </a>
         ) : (
-          <Button color="danger" size="sm" onClick={() => setSelectedInterviewId(interview._id)}>
-            Delete
-          </Button>
+          <>
+            {interview.interview_status === "Upcoming" && (
+              <Link to={`/edit-ai-interview/${interview._id}`} className="btn btn-primary btn-sm me-2">
+                Edit
+              </Link>
+            )}
+            <Button color="danger" size="sm" onClick={() => setSelectedInterviewId(interview._id)}>
+              Delete
+            </Button>
+          </>
         ),
     },
   ];
@@ -213,12 +218,13 @@ const InterviewsList = (props) => {
         <Col xs="12">
           <Card>
             <CardBody className="d-flex justify-content-between align-items-center">
-              <CardTitle className="h4">{user.organization} - Interview List</CardTitle>
-              <div>
-                <Button color="success" onClick={downloadExcel} className="me-2" disabled={!filteredData.length}>
+              <CardTitle className="h4">{tenantName ? `${tenantName} - ` : ""}Interview List</CardTitle>
+              <div className="d-flex align-items-center gap-2">
+                <TenantSelect {...tenantSelection} />
+                <Button color="success" onClick={downloadExcel} className="text-nowrap" disabled={!filteredData.length}>
                   Download Excel
                 </Button>
-                <Link to="/add-ai-interview" className="btn btn-primary">
+                <Link to="/add-ai-interview" className="btn btn-primary text-nowrap">
                   ADD INTERVIEW
                 </Link>
               </div>
@@ -352,8 +358,8 @@ const InterviewsList = (props) => {
               <LoadState
                 loading={loading}
                 error={error}
-                empty={!filteredData.length}
-                emptyText="No interviews found"
+                empty={!tenantId || !filteredData.length}
+                emptyText={tenantId ? "No interviews found" : "Select a college"}
                 onRetry={() => fetchInterviewsData(filterDate || getYesterdayDateString())}
               >
                 <BootstrapTable

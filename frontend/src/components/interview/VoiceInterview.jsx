@@ -18,14 +18,19 @@ const pickVoice = () => {
   return voices.find((v) => v.lang === "en-IN") || voices.find((v) => v.lang && v.lang.startsWith("en")) || null;
 };
 
+const statusOf = (err) => err && err.response && err.response.status;
+
 /**
  * Technology / company interview: each question is read aloud, the student answers
  * by voice (or by typing), and every answer is saved to the server immediately.
+ * Timers and callbacks read the latest values through refs so parent re-renders
+ * never reset them.
  */
 function VoiceInterview({ session, client, onFinish }) {
   const questions = session.questions;
-  const saved = Object.fromEntries((session.answers || []).map((a) => [a.question_id, a.answer]));
-  const firstOpen = questions.findIndex((q) => saved[q.id] === undefined);
+  // Resume at the first question the student had not moved past.
+  const finalIds = new Set((session.answers || []).filter((a) => a.final).map((a) => a.question_id));
+  const firstOpen = questions.findIndex((q) => !finalIds.has(q.id));
 
   const [index, setIndex] = useState(firstOpen === -1 ? questions.length : firstOpen);
   const [phase, setPhase] = useState("speaking"); // speaking | buffer | answering | saving
@@ -33,33 +38,31 @@ function VoiceInterview({ session, client, onFinish }) {
   const [typed, setTyped] = useState("");
   const [typing, setTyping] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [fatal, setFatal] = useState("");
   const [deadlineLeft, setDeadlineLeft] = useState(null);
 
   const { transcript, resetTranscript, browserSupportsSpeechRecognition, isMicrophoneAvailable } = useSpeechRecognition();
+  const canUseVoice = browserSupportsSpeechRecognition && isMicrophoneAvailable !== false;
+  const useTyping = typing || !canUseVoice;
+  const question = questions[index];
+
+  // Latest values for timers/callbacks.
+  const textRef = useRef("");
+  textRef.current = useTyping ? typed : transcript;
+  const indexRef = useRef(index);
+  indexRef.current = index;
+  const onFinishRef = useRef(onFinish);
+  onFinishRef.current = onFinish;
+  const resetRef = useRef(resetTranscript);
+  resetRef.current = resetTranscript;
+
   const answerStartRef = useRef(0);
   const finishedRef = useRef(false);
   const advancingRef = useRef(false);
-
-  const canUseVoice = browserSupportsSpeechRecognition && isMicrophoneAvailable !== false;
-  const useTyping = typing || !canUseVoice;
-  const currentText = useTyping ? typed : transcript;
-  const textRef = useRef("");
-  textRef.current = currentText;
-
-  const question = questions[index];
-
-  // Overall time limit from the server.
-  useEffect(() => {
-    if (!session.deadline_at) return undefined;
-    const skew = new Date(session.server_time).getTime() - Date.now();
-    const tick = () => {
-      const left = Math.floor((new Date(session.deadline_at).getTime() - (Date.now() + skew)) / 1000);
-      setDeadlineLeft(left);
-    };
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [session.deadline_at, session.server_time]);
+  const finishAfterSaveRef = useRef(false);
+  const autosaveRef = useRef(null);
+  const retryTimerRef = useRef(null);
+  const mountedRef = useRef(true);
 
   const stopListening = () => {
     try {
@@ -69,59 +72,86 @@ function VoiceInterview({ session, client, onFinish }) {
     }
   };
 
-  const finishAll = useCallback(async () => {
+  const finishAll = useCallback(() => {
     if (finishedRef.current) return;
     finishedRef.current = true;
     stopListening();
     if (window.speechSynthesis) window.speechSynthesis.cancel();
-    onFinish();
-  }, [onFinish]);
+    onFinishRef.current();
+  }, []);
 
-  // Saves the current answer, then moves to the next question (or finishes).
+  // Saves the current answer as final, then moves to the next question (or finishes).
   const advance = useCallback(async () => {
-    if (advancingRef.current || !question) return;
+    const i = indexRef.current;
+    const q = questions[i];
+    if (advancingRef.current || !q || finishedRef.current) return;
     advancingRef.current = true;
     stopListening();
     setPhase("saving");
     const answer = textRef.current || "";
     const time = Math.min(ANSWER_SECONDS, Math.round((Date.now() - answerStartRef.current) / 1000));
     try {
-      await withRetry(() => client.saveAnswer(question.id, { answer, time }));
+      if (autosaveRef.current) await autosaveRef.current.catch(() => {});
+      await withRetry(() => client.saveAnswer(q.id, { answer, time, final: true }));
       setSaveError("");
     } catch (err) {
-      const status = err && err.response && err.response.status;
+      advancingRef.current = false;
+      const status = statusOf(err);
       if (status === 409) {
-        // time over or already submitted: hand over to submission
-        advancingRef.current = false;
-        finishAll();
+        finishAll(); // time over or already submitted
         return;
       }
+      if (status && status < 500 && status !== 429) {
+        // e.g. 401: the interview was resumed elsewhere, so this tab's session is no longer valid
+        setFatal(
+          (err.response.data && err.response.data.message) ||
+            "This interview session is no longer valid. Please restart the interview from your dashboard."
+        );
+        stopListening();
+        return;
+      }
+      if (!mountedRef.current) return;
       setSaveError("Could not save your answer. Check your connection; retrying...");
-      advancingRef.current = false;
-      setTimeout(() => advance(), 3000);
+      retryTimerRef.current = setTimeout(() => advance(), 3000);
       return;
     }
-    resetTranscript();
+    if (!mountedRef.current) return;
+    resetRef.current();
     setTyped("");
     advancingRef.current = false;
-    if (index + 1 >= questions.length) {
+    if (finishAfterSaveRef.current || i + 1 >= questions.length) {
       finishAll();
     } else {
-      setIndex(index + 1);
+      setIndex(i + 1);
       setPhase("speaking");
     }
-  }, [client, question, index, questions.length, resetTranscript, finishAll]);
+  }, [client, questions, finishAll]);
 
   // Everything already answered (resume after the last question).
   useEffect(() => {
     if (index >= questions.length) finishAll();
   }, [index, questions.length, finishAll]);
 
-  // Server time is up: save what we have and submit.
+  // Overall time limit from the server.
   useEffect(() => {
-    if (deadlineLeft !== null && deadlineLeft <= 0 && !finishedRef.current) {
-      if (phase === "answering") advance();
-      else finishAll();
+    if (!session.deadline_at) return undefined;
+    const skew = new Date(session.server_time).getTime() - Date.now();
+    const tick = () => setDeadlineLeft(Math.floor((new Date(session.deadline_at).getTime() - (Date.now() + skew)) / 1000));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [session.deadline_at, session.server_time]);
+
+  // Server time is up: save what we have, then submit.
+  useEffect(() => {
+    if (deadlineLeft === null || deadlineLeft > 0 || finishedRef.current) return;
+    if (advancingRef.current) {
+      finishAfterSaveRef.current = true; // submit after the in-flight save completes
+    } else if (phase === "answering") {
+      finishAfterSaveRef.current = true;
+      advance();
+    } else {
+      finishAll();
     }
   }, [deadlineLeft, phase, advance, finishAll]);
 
@@ -130,6 +160,7 @@ function VoiceInterview({ session, client, onFinish }) {
     if (phase !== "speaking" || !question) return undefined;
     const synth = window.speechSynthesis;
     let done = false;
+    let utter = null;
     const next = () => {
       if (done) return;
       done = true;
@@ -141,7 +172,7 @@ function VoiceInterview({ session, client, onFinish }) {
       return undefined;
     }
     synth.cancel();
-    const utter = new SpeechSynthesisUtterance(question.question);
+    utter = new SpeechSynthesisUtterance(question.question);
     const voice = pickVoice();
     if (voice) utter.voice = voice;
     utter.lang = voice ? voice.lang : "en-IN";
@@ -150,9 +181,18 @@ function VoiceInterview({ session, client, onFinish }) {
     synth.speak(utter);
     // Some browsers never fire onend; fall back after a reasonable reading time.
     const words = question.question.split(/\s+/).length;
-    const fallback = setTimeout(next, Math.max(4000, words * 450 + 2000));
+    const fallback = setTimeout(() => {
+      synth.cancel(); // stop speaking so the microphone does not pick up the question
+      next();
+    }, Math.max(4000, words * 450 + 2000));
     return () => {
+      done = true;
       clearTimeout(fallback);
+      if (utter) {
+        utter.onend = null;
+        utter.onerror = null;
+      }
+      synth.cancel();
     };
   }, [phase, question]);
 
@@ -160,18 +200,16 @@ function VoiceInterview({ session, client, onFinish }) {
   useEffect(() => {
     if (phase !== "buffer") return undefined;
     if (seconds <= 0) {
-      resetTranscript();
+      resetRef.current();
       answerStartRef.current = Date.now();
       setSeconds(ANSWER_SECONDS);
       setPhase("answering");
-      if (canUseVoice && !typing) {
-        SpeechRecognition.startListening({ continuous: true, language: "en-IN" });
-      }
+      if (canUseVoice && !typing) SpeechRecognition.startListening({ continuous: true, language: "en-IN" });
       return undefined;
     }
-    const t = setTimeout(() => setSeconds((s) => s - 1), 1000);
+    const t = setTimeout(() => setSeconds((x) => x - 1), 1000);
     return () => clearTimeout(t);
-  }, [phase, seconds, canUseVoice, typing, resetTranscript]);
+  }, [phase, seconds, canUseVoice, typing]);
 
   // Phase: answering countdown.
   useEffect(() => {
@@ -180,36 +218,48 @@ function VoiceInterview({ session, client, onFinish }) {
       advance();
       return undefined;
     }
-    const t = setTimeout(() => setSeconds((s) => s - 1), 1000);
+    const t = setTimeout(() => setSeconds((x) => x - 1), 1000);
     return () => clearTimeout(t);
   }, [phase, seconds, advance]);
 
-  // Autosave the in-progress answer so a crash or reload loses at most a few seconds.
+  // Autosave the in-progress answer (not final) so a crash loses at most a few seconds.
   useEffect(() => {
     if (phase !== "answering" || !question) return undefined;
     const t = setInterval(() => {
       const answer = textRef.current;
-      if (answer) {
-        const time = Math.round((Date.now() - answerStartRef.current) / 1000);
-        client.saveAnswer(question.id, { answer, time }).catch(() => {});
-      }
+      if (!answer || advancingRef.current) return;
+      const time = Math.round((Date.now() - answerStartRef.current) / 1000);
+      autosaveRef.current = client.saveAnswer(question.id, { answer, time }).catch(() => {});
     }, AUTOSAVE_MS);
     return () => clearInterval(t);
   }, [phase, question, client]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearTimeout(retryTimerRef.current);
       stopListening();
       if (window.speechSynthesis) window.speechSynthesis.cancel();
-    },
-    []
-  );
+    };
+  }, []);
 
   const switchToTyping = () => {
     stopListening();
     setTyped(transcript);
     setTyping(true);
   };
+
+  if (fatal) {
+    return (
+      <div className="mpod-center">
+        <div className="mpod-panel mpod-panel-narrow" role="alert">
+          <h2 className="mpod-title">Interview paused</h2>
+          <p className="mpod-muted">{fatal}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!question) return null;
   const isLast = index === questions.length - 1;

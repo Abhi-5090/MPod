@@ -1,12 +1,11 @@
 import { STUDENT_APP_URL } from "../../config/api"
 
-// YYYY-MM-DD for yesterday (local time). Lists load yesterday's records by default.
+// YYYY-MM-DD for yesterday in IST (UTC+5:30), matching the backend's default date.
 export const getYesterdayDateString = () => {
-  const d = new Date()
-  d.setDate(d.getDate() - 1)
-  const yyyy = d.getFullYear()
-  const mm = String(d.getMonth() + 1).padStart(2, "0")
-  const dd = String(d.getDate()).padStart(2, "0")
+  const ist = new Date(Date.now() + 5.5 * 60 * 60 * 1000 - 24 * 60 * 60 * 1000)
+  const yyyy = ist.getUTCFullYear()
+  const mm = String(ist.getUTCMonth() + 1).padStart(2, "0")
+  const dd = String(ist.getUTCDate()).padStart(2, "0")
   return `${yyyy}-${mm}-${dd}`
 }
 

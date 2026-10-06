@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as faceapi from "face-api.js";
 
 const MODEL_BASE = process.env.REACT_APP_PUBLIC_BACKEND_MODEL_URL;
@@ -139,5 +139,6 @@ export default function useFaceTracking(enabled = true) {
     };
   }, []);
 
-  return { videoRef, status, warning, summary, stop };
+  // Stable object so consumers' callbacks/effects are not recreated every render.
+  return useMemo(() => ({ videoRef, status, warning, summary, stop }), [status, warning, summary, stop]);
 }

@@ -8,7 +8,7 @@ import paginationFactory from "react-bootstrap-table2-paginator";
 import { toast } from "react-toastify";
 import { setBreadcrumbItems } from "../../store/actions";
 import { apiUrl, getErrorMessage } from "../../config/api";
-import { useAuth } from "../../context/AuthContext";
+import useTenantSelection, { TenantSelect } from "./useTenantSelection";
 import LoadState from "../../components/Common/LoadState";
 import ConfirmModal from "../../components/Common/ConfirmModal";
 import {
@@ -37,7 +37,8 @@ const mapToRows = (arr) =>
 const CompanyInterviewsList = (props) => {
   document.title = "Company Interviews List | Mpod";
 
-  const { user } = useAuth();
+  const tenantSelection = useTenantSelection();
+  const { tenantId, tenantName } = tenantSelection;
   const [interviewsData, setInterviewsData] = useState([]); // date-scoped data from server
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDate, setFilterDate] = useState(getYesterdayDateString()); // YYYY-MM-DD
@@ -58,10 +59,16 @@ const CompanyInterviewsList = (props) => {
   // fetch interviews for a date (YYYY-MM-DD)
   const fetchInterviewsData = useCallback(
     async (dateParam) => {
+      if (!tenantId) {
+        setInterviewsData([]);
+        setError(null);
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       setError(null);
       try {
-        const res = await axios.get(apiUrl(`get-company-interviews/${user.t_id}`), {
+        const res = await axios.get(apiUrl(`get-company-interviews/${tenantId}`), {
           params: dateParam ? { date: dateParam } : {},
         });
         setInterviewsData(Array.isArray(res.data) ? res.data : []);
@@ -72,7 +79,7 @@ const CompanyInterviewsList = (props) => {
         setLoading(false);
       }
     },
-    [user.t_id]
+    [tenantId]
   );
 
   useEffect(() => {
@@ -160,9 +167,16 @@ const CompanyInterviewsList = (props) => {
             View
           </a>
         ) : (
-          <Button color="danger" size="sm" onClick={() => setSelectedInterviewId(interview._id)}>
-            Delete
-          </Button>
+          <>
+            {interview.interview_status === "Upcoming" && (
+              <Link to={`/edit-company-interview/${interview._id}`} className="btn btn-primary btn-sm me-2">
+                Edit
+              </Link>
+            )}
+            <Button color="danger" size="sm" onClick={() => setSelectedInterviewId(interview._id)}>
+              Delete
+            </Button>
+          </>
         ),
     },
   ];
@@ -173,10 +187,13 @@ const CompanyInterviewsList = (props) => {
         <Col className="col-12">
           <Card>
             <CardBody className="d-flex justify-content-between align-items-center">
-              <CardTitle className="h4">{user.organization} - Company Interviews List</CardTitle>
-              <Link to="/add-company-interview" className="btn btn-primary waves-effect waves-light">
-                ADD INTERVIEW
-              </Link>
+              <CardTitle className="h4">{tenantName ? `${tenantName} - ` : ""}Company Interviews List</CardTitle>
+              <div className="d-flex align-items-center gap-2">
+                <TenantSelect {...tenantSelection} />
+                <Link to="/add-company-interview" className="btn btn-primary waves-effect waves-light text-nowrap">
+                  ADD INTERVIEW
+                </Link>
+              </div>
             </CardBody>
 
             <CardBody>
@@ -293,8 +310,8 @@ const CompanyInterviewsList = (props) => {
               <LoadState
                 loading={loading}
                 error={error}
-                empty={!filteredRows.length}
-                emptyText="No interviews found for selected date."
+                empty={!tenantId || !filteredRows.length}
+                emptyText={tenantId ? "No interviews found for selected date." : "Select a college"}
                 onRetry={() => fetchInterviewsData(filterDate || getYesterdayDateString())}
               >
                 <BootstrapTable

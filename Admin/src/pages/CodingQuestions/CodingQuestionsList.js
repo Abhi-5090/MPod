@@ -37,7 +37,11 @@ const CodingQuestionsList = props => {
       const response = await axios.get(apiUrl("get-coding-questions"))
       setQuestions(Array.isArray(response.data) ? response.data : [])
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load coding questions."))
+      setQuestions([])
+      // Backend answers 404 when there are no coding questions yet.
+      if (err.response?.status !== 404) {
+        setError(getErrorMessage(err, "Failed to load coding questions."))
+      }
     } finally {
       setLoading(false)
     }

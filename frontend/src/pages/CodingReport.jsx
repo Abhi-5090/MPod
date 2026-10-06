@@ -108,7 +108,7 @@ function CodingReport(props) {
                 if (response.data) {
                     setQna(response.data.question_details);
                     setUser(response.data.user_details)
-                    setEmotions(response.data.emotions[0]);
+                    { const e = response.data.emotions; setEmotions(Array.isArray(e) ? e[0] || null : e || null); }
                     setStartDate(response.data.start_date_time_ist)
                     // setStrengths(response.data.overall_analysis.strengths);
                     // setImprovements(response.data.overall_analysis.areas_of_improvement);

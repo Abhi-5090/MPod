@@ -93,19 +93,36 @@ const EditInterview = (props) => {
         value: interviewDetails.technology
       });
 
-      if (interviewDetails.module && interviewDetails.module_name) {
-        setselectedModuleGroup(interviewDetails.module.map((moduleId, index) => ({
-          label: interviewDetails.module_name[index],
-          value: moduleId
-        })));
-      }
+      // Label modules/topics by id. Newer backends send module_details/topic_details
+      // ([{_id, module_name}] / [{_id, topic_name}]); older ones only send parallel name arrays.
+      const toOptions = (ids, details, nameKey, legacyNames) => {
+        if (!Array.isArray(ids)) return null;
+        const byId = new Map(
+          (Array.isArray(details) ? details : []).map((d) => [String(d._id), d[nameKey]])
+        );
+        const legacy = Array.isArray(legacyNames) && legacyNames.length === ids.length ? legacyNames : null;
+        return ids.map((rawId, index) => {
+          const value = rawId && typeof rawId === "object" ? rawId._id : rawId;
+          const label = byId.get(String(value)) || (byId.size === 0 && legacy ? legacy[index] : null) || String(value);
+          return { label, value };
+        });
+      };
 
-      if (interviewDetails.topic && interviewDetails.topic_name) {
-        setselectedTopicGroup(interviewDetails.topic.map((topicId, index) => ({
-          label: interviewDetails.topic_name[index],
-          value: topicId
-        })));
-      }
+      const moduleOptions = toOptions(
+        interviewDetails.module,
+        interviewDetails.module_details,
+        "module_name",
+        interviewDetails.module_name
+      );
+      if (moduleOptions) setselectedModuleGroup(moduleOptions);
+
+      const topicOptions = toOptions(
+        interviewDetails.topic,
+        interviewDetails.topic_details,
+        "topic_name",
+        interviewDetails.topic_name
+      );
+      if (topicOptions) setselectedTopicGroup(topicOptions);
 
       setSelectedLevel(
         levelOptions.find(option => option.value === interviewDetails.level) || null

@@ -40,7 +40,8 @@ const noClipboard = {
 function CodingInterview({ session, client, onFinish }) {
   const questions = session.questions;
   const savedById = useMemo(() => Object.fromEntries((session.answers || []).map((a) => [a.question_id, a])), [session.answers]);
-  const firstOpen = questions.findIndex((q) => !savedById[q.id] || !savedById[q.id].answer);
+  // Resume at the first problem the student had not moved past.
+  const firstOpen = questions.findIndex((q) => !savedById[q.id] || !savedById[q.id].final);
 
   const [index, setIndex] = useState(firstOpen === -1 ? questions.length - 1 : firstOpen);
   const question = questions[index];
@@ -55,47 +56,70 @@ function CodingInterview({ session, client, onFinish }) {
   const [timer, setTimer] = useState((Number(question.time) || 15) * 60);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [fatal, setFatal] = useState("");
   const startedAt = useRef(Date.now());
   const finished = useRef(false);
+  const advancing = useRef(false);
   const face = useFaceTracking(true);
+  const paused = face.status === "denied" || Boolean(fatal);
 
   const fieldsRef = useRef({});
   fieldsRef.current = { idea, answer: code, optimized_answer: optimized || code };
+  const onFinishRef = useRef(onFinish);
+  onFinishRef.current = onFinish;
+  const faceRef = useRef(face);
+  faceRef.current = face;
 
+  // final=true marks that the student moved past this problem (used for resume and
+  // so that a late autosave can never overwrite it).
   const save = useCallback(
-    (final) =>
+    ({ final = false, throwOnError = false } = {}) =>
       withRetry(() =>
         client.saveAnswer(question.id, {
           ...fieldsRef.current,
           time: Math.round((Date.now() - startedAt.current) / 1000),
+          final,
         })
       ).catch((err) => {
-        if (final) throw err;
+        if (throwOnError) throw err;
       }),
     [client, question.id]
   );
 
-  const finishAll = useCallback(async () => {
+  const finishAll = useCallback(() => {
     if (finished.current) return;
     finished.current = true;
-    const emotions = face.status === "on" ? face.summary() : undefined;
-    face.stop();
-    onFinish(emotions);
-  }, [face, onFinish]);
+    const f = faceRef.current;
+    const emotions = f.status === "on" ? f.summary() : undefined;
+    f.stop();
+    onFinishRef.current(emotions);
+  }, []);
 
   const goNext = useCallback(async () => {
+    if (advancing.current || finished.current) return;
+    advancing.current = true;
     setBusy(true);
     try {
-      await save(true);
+      await save({ final: true, throwOnError: true });
     } catch (err) {
-      if (err && err.response && err.response.status === 409) {
+      advancing.current = false;
+      setBusy(false);
+      const status = err && err.response && err.response.status;
+      if (status === 409) {
         finishAll();
         return;
       }
-      setNotice(errorMessage(err, "Could not save your answer. Check your connection and try again."));
-      setBusy(false);
+      if (status && status < 500 && status !== 429) {
+        setFatal(errorMessage(err, "This interview session is no longer valid. Please restart the interview from your dashboard."));
+        return;
+      }
+      setNotice(errorMessage(err, "Could not save your answer. Check your connection; retrying..."));
+      setTimeout(() => {
+        if (!finished.current) goNextRef.current();
+      }, 5000);
       return;
     }
+    advancing.current = false;
     setBusy(false);
     if (index + 1 >= questions.length) {
       finishAll();
@@ -113,34 +137,41 @@ function CodingInterview({ session, client, onFinish }) {
     startedAt.current = Date.now();
     setNotice("");
   }, [save, index, questions, savedById, finishAll]);
+  const goNextRef = useRef(goNext);
+  goNextRef.current = goNext;
 
   // Per-problem timer: when it runs out the current work is saved and we move on.
   useEffect(() => {
+    if (paused) return undefined;
     if (timer <= 0) {
-      goNext();
+      goNextRef.current();
       return undefined;
     }
     const t = setTimeout(() => setTimer((x) => x - 1), 1000);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timer]);
+  }, [timer, paused]);
 
   // Overall server deadline.
   useEffect(() => {
     if (!session.deadline_at) return undefined;
     const skew = new Date(session.server_time).getTime() - Date.now();
     const t = setInterval(() => {
+      if (finished.current || advancing.current) return;
       if (new Date(session.deadline_at).getTime() - (Date.now() + skew) <= 0) {
-        save(false).finally(finishAll);
+        advancing.current = true;
+        save({ final: true }).finally(finishAll);
       }
     }, 1000);
     return () => clearInterval(t);
   }, [session.deadline_at, session.server_time, save, finishAll]);
 
   useEffect(() => {
-    const t = setInterval(() => save(false), AUTOSAVE_MS);
+    if (paused) return undefined;
+    const t = setInterval(() => {
+      if (!advancing.current && !finished.current) save();
+    }, AUTOSAVE_MS);
     return () => clearInterval(t);
-  }, [save]);
+  }, [save, paused]);
 
   const checkIdea = async () => {
     if (!idea.trim()) {
@@ -151,7 +182,7 @@ function CodingInterview({ session, client, onFinish }) {
     try {
       const { data } = await client.analyzeIdea(question.id, idea.trim());
       if (data.accuracy >= IDEA_PASS) {
-        await save(false);
+        await save();
         setStage("code");
         setIdeaInfo({ checking: false, message: "", attemptsLeft: data.attempts_left });
       } else {
@@ -183,19 +214,30 @@ function CodingInterview({ session, client, onFinish }) {
     }
     setNotice("");
     if (!optimized) setOptimized(code);
-    await save(false);
+    await save();
     setStage("optimize");
   };
 
   const mmss = `${String(Math.floor(Math.max(timer, 0) / 60)).padStart(2, "0")}:${String(Math.max(timer, 0) % 60).padStart(2, "0")}`;
   const isLast = index === questions.length - 1;
 
+  if (fatal) {
+    return (
+      <div className="mpod-center">
+        <div className="mpod-panel mpod-panel-narrow" role="alert">
+          <h2 className="mpod-title">Interview paused</h2>
+          <p className="mpod-muted">{fatal}</p>
+        </div>
+      </div>
+    );
+  }
+
   if (face.status === "denied") {
     return (
       <div className="mpod-center">
         <div className="mpod-panel mpod-panel-narrow" role="alert">
           <h2 className="mpod-title">Camera access is required</h2>
-          <p className="mpod-muted">Allow camera access in your browser for this site, then reload the page. Your progress is saved.</p>
+          <p className="mpod-muted">Allow camera access in your browser for this site, then reload the page. Your progress is saved and the timer is paused on this screen, but the overall interview time limit still applies.</p>
         </div>
       </div>
     );

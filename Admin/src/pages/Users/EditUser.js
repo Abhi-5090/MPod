@@ -41,14 +41,10 @@ const emptyForm = {
   password: "",
 };
 
-const allowedRolesFor = (currentUser) => {
-  if (isPlatformRole(currentUser.role)) {
-    const roles = ["student", "tenantadmin", "placementadmin", "trainer"];
-    if (currentUser.role === "superadmin") roles.push("admin");
-    return roles;
-  }
-  return ["student", "placementadmin", "trainer"];
-};
+// Mirrors backend ASSIGNABLE_ROLES: platform -> student + tenant staff; tenantadmin -> student only.
+// admin/superadmin are never assignable from here.
+const allowedRolesFor = (currentUser) =>
+  isPlatformRole(currentUser.role) ? ["student", "tenantadmin", "placementadmin", "trainer"] : ["student"];
 
 const EditUser = (props) => {
   document.title = "Edit User | Mpod";
@@ -106,7 +102,8 @@ const EditUser = (props) => {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const roleOptions = allowedRolesFor(currentUser);
+  const assignableRoles = allowedRolesFor(currentUser);
+  const roleOptions = [...assignableRoles];
   if (original.role && !roleOptions.includes(original.role)) roleOptions.unshift(original.role);
 
   // Only validate fields the admin changed, so bad legacy data does not block unrelated edits.
@@ -262,7 +259,8 @@ const EditUser = (props) => {
                         <Label for="role">Role</Label>
                         <Input id="role" name="role" type="select" value={form.role} onChange={handleChange}>
                           {roleOptions.map((r) => (
-                            <option key={r} value={r}>
+                            // The user's current (non-assignable) role is shown but cannot be re-selected.
+                            <option key={r} value={r} disabled={!assignableRoles.includes(r)}>
                               {ROLE_LABELS[r] || r}
                             </option>
                           ))}

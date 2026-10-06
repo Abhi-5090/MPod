@@ -2,7 +2,10 @@
 // REACT_APP_MPOD_BACKEND_URL must end with a trailing slash, e.g. https://mpod.ai/backend/api/
 export const API_BASE = process.env.REACT_APP_MPOD_BACKEND_URL || ""
 export const IMAGE_BASE = process.env.REACT_APP_BACKEND_IMAGE_URL || ""
-export const STUDENT_APP_URL = process.env.REACT_APP_STUDENT_APP_URL || "https://mpod.ai/"
+// Admin is served at <origin>/admin, so without an explicit URL the student app is the origin root.
+const studentAppFallback = () =>
+  typeof window !== "undefined" && window.location ? `${window.location.origin}/` : "/"
+export const STUDENT_APP_URL = process.env.REACT_APP_STUDENT_APP_URL || studentAppFallback()
 
 export const apiUrl = path => `${API_BASE}${path}`
 

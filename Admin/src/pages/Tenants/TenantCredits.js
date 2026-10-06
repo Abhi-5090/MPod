@@ -28,7 +28,7 @@ import { useAuth } from "../../context/AuthContext"
 import LoadState from "../../components/Common/LoadState"
 
 // Endpoints:
-//   GET  get-tenant/:id                                   (platform only) -> {organization_name, active_credits, ...}
+//   GET  get-tenant/:id                                   (platform, or tenantadmin for own tenant) -> {organization_name, active_credits, ...}
 //   GET  tenants/:id/credit-transactions?page=&limit=     -> {items, total, page, limit}
 //   POST tenants/:id/credits {amount, type, reason}       (platform only) -> {message, tenant, transaction}
 const PAGE_SIZE = 50
@@ -166,6 +166,7 @@ const TenantCredits = props => {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [tenantError, setTenantError] = useState(null)
 
   useEffect(() => {
     document.title = "Tenant Credits | Mpod"
@@ -184,17 +185,17 @@ const TenantCredits = props => {
     )
   }, [setBreadcrumbs, platform])
 
-  // Tenant details (name + current balance). Only platform roles may read get-tenant.
+  // Tenant details (name + current balance) always come from get-tenant (active_credits).
   const fetchTenant = useCallback(async () => {
-    if (!platform) return
+    setTenantError(null)
     try {
       const { data } = await axios.get(apiUrl(`get-tenant/${id}`))
-      setTenant(data)
-      setBalance(data.active_credits)
+      setTenant(data || null)
+      setBalance(data ? data.active_credits : null)
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load tenant."))
+      setTenantError(getErrorMessage(err, "Failed to load tenant."))
     }
-  }, [id, platform])
+  }, [id])
 
   const fetchHistory = useCallback(
     async pageToLoad => {
@@ -211,17 +212,13 @@ const TenantCredits = props => {
           page: Number(data && data.page) || pageToLoad,
           limit: Number(data && data.limit) || PAGE_SIZE,
         })
-        // Tenant staff cannot read get-tenant: derive the balance from the newest transaction.
-        if (!platform && pageToLoad === 1) {
-          setBalance(items.length ? items[0].balance_after : 0)
-        }
       } catch (err) {
         setError(getErrorMessage(err, "Failed to load credit history."))
       } finally {
         setLoading(false)
       }
     },
-    [id, platform]
+    [id]
   )
 
   useEffect(() => {
@@ -272,6 +269,14 @@ const TenantCredits = props => {
               <CardTitle className="h4">{tenantName}</CardTitle>
               <p className="text-muted mb-1">Current credit balance</p>
               <h2 className="mb-0">{balance === null || balance === undefined ? "—" : balance}</h2>
+              {tenantError && (
+                <Alert color="danger" className="mt-3 mb-0 d-flex justify-content-between align-items-center">
+                  <span>{tenantError}</span>
+                  <Button size="sm" color="danger" outline onClick={fetchTenant}>
+                    Retry
+                  </Button>
+                </Alert>
+              )}
               {platform && (
                 <div className="mt-3">
                   <Link to={`/edit-tenant/${id}`} className="btn btn-outline-secondary btn-sm">

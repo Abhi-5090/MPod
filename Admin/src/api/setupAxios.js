@@ -34,9 +34,14 @@ export default function setupAxios() {
       const status = error.response && error.response.status
       const url = error.config && error.config.url
       if (status === 401 && !urlMatches(url, NO_REDIRECT_ENDPOINTS) && !isPublicPage()) {
-        window.location.assign("/admin/login")
+        // Come back to the current page (path relative to the /admin basename) after logging in.
+        const current = (window.location.pathname.replace(/^\/admin(?=\/|$)/, "") || "/") + window.location.search
+        window.location.assign(`/admin/login?next=${encodeURIComponent(current)}`)
       } else if (status === 403 && !urlMatches(url, ["admin-login"])) {
-        toast.error("You do not have permission", { toastId: "forbidden" })
+        // Pages toast the server's specific message themselves; only fall back to a generic one.
+        const data = error.response.data
+        const hasMessage = data && typeof data === "object" && typeof data.message === "string" && data.message
+        if (!hasMessage) toast.error("You do not have permission", { toastId: "forbidden" })
       }
       return Promise.reject(error)
     }

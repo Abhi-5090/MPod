@@ -20,7 +20,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import * as XLSX from "xlsx";
 import { apiUrl, getErrorMessage } from "../../config/api";
-import { useAuth } from "../../context/AuthContext";
+import useTenantSelection, { TenantSelect } from "./useTenantSelection";
 
 const levelOptions = [
   { label: "Easy", value: "easy" },
@@ -47,7 +47,8 @@ const interviewTypeOptions = [
 const AddInterview = (props) => {
   document.title = "Add Interview | Mpod";
 
-  const { user } = useAuth();
+  const tenantSelection = useTenantSelection();
+  const { user, tenantId } = tenantSelection;
   const [data, setData] = useState({});
   const [selectedTechnologyGroup, setselectedTechnologyGroup] = useState(null);
   const [selectedModuleGroup, setselectedModuleGroup] = useState(null);
@@ -184,6 +185,7 @@ const AddInterview = (props) => {
   };
 
   const validate = () => {
+    if (!tenantId) return "Select a college";
     if (
       !selectedPlatform ||
       !selectedTechnologyGroup ||
@@ -224,7 +226,7 @@ const AddInterview = (props) => {
           questions_count: data.no_of_questions,
           status: selectedStatus.value,
           created_by: user.roll_no,
-          tenant_id: user.t_id,
+          tenant_id: tenantId,
         };
         await axios.post(apiUrl("add-interviewee-details"), dataList);
         toast.success("Interview added successfully!");
@@ -241,7 +243,7 @@ const AddInterview = (props) => {
           questions_count: data.no_of_questions,
           status: selectedStatus.value,
           created_by: user.roll_no,
-          tenant_id: user.t_id,
+          tenant_id: tenantId,
           type: selectedInterviewType.value,
         };
         const formData = new FormData();
@@ -297,6 +299,7 @@ const AddInterview = (props) => {
             <CardBody>
               <h4 className="card-title">Add Interview</h4>
               <AvForm className="needs-validation">
+                <TenantSelect {...tenantSelection} id="interviewTenant" className="mb-3" />
                 <Row>
                   <Col md="6">
                     <div className="mb-3">

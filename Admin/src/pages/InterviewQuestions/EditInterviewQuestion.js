@@ -23,7 +23,7 @@ const EditInterviewQuestion = (props) => {
   const [data, setData] = useState({});
   const [switch3, setswitch3] = useState(true);
   const [selectedTechnologyGroup, setselectedTechnologyGroup] = useState(null);
-  const [selectedCompanyGroup, setselectedCompanyGroup] = useState(null);
+  const [selectedCompanyGroup, setselectedCompanyGroup] = useState([]);
   const [technologyData, setTechnologyData] = useState([]);
   const [companyData, setCompanyData] = useState([]);
 
@@ -66,8 +66,17 @@ const EditInterviewQuestion = (props) => {
     const tech = technologies.find(t => t._id === topic.technology);
     if (tech) setselectedTechnologyGroup({ label: tech.technology_name, value: tech._id });
 
-    const company = companies.find(c => c._id === topic.company);
-    if (company) setselectedCompanyGroup({ label: company.company_name, value: company._id });
+    // `company` is an array of company ObjectIds (legacy rows may hold a single id).
+    const companyIds = (Array.isArray(topic.company) ? topic.company : topic.company ? [topic.company] : [])
+      .map(id => (id && typeof id === "object" ? id._id : id))
+      .filter(Boolean)
+      .map(String);
+    setselectedCompanyGroup(
+      companyIds.map(id => {
+        const company = companies.find(c => String(c._id) === id);
+        return { label: company ? company.company_name : id, value: id };
+      })
+    );
   };
 
   const handleChange = (e) => {
@@ -80,7 +89,7 @@ const EditInterviewQuestion = (props) => {
       id: questionId,
       question: data.question,
       answer: data.answer,
-      company: selectedCompanyGroup?.value || "",
+      company: (selectedCompanyGroup || []).map(opt => opt.value),
       technology: selectedTechnologyGroup?.value || "",
       status: newStatus,
     };
@@ -131,10 +140,11 @@ const EditInterviewQuestion = (props) => {
                 <Row>
                   <Col md="6">
                     <div className="mb-3">
-                      <Label>Select company</Label>
+                      <Label>Select companies</Label>
                       <Select
+                        isMulti
                         value={selectedCompanyGroup}
-                        onChange={setselectedCompanyGroup}
+                        onChange={opts => setselectedCompanyGroup(opts || [])}
                         options={companyData.map(ele => ({ label: ele.company_name, value: ele._id }))}
                         classNamePrefix="select2-selection"
                       />

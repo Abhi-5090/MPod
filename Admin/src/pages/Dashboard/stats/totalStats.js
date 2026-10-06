@@ -166,10 +166,11 @@ const TotalStats = (props) => {
               <CardBody>
                 <Row className="align-items-center">
                   <Col md={4} className="text-center d-flex justify-content-center align-items-center">
-                    <img
-                      src="https://cdn4.iconfinder.com/data/icons/small-n-flat/24/user-group-512.png"
-                      alt="Users"
-                      style={{ width: "42px" }}
+                    <i
+                      className="mdi mdi-account-group text-primary"
+                      role="img"
+                      aria-label="Users"
+                      style={{ fontSize: "42px", lineHeight: 1 }}
                     />
                   </Col>
                   <Col md={2}></Col>

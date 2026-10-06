@@ -74,7 +74,7 @@ const Dashboard = () => {
 
   // Interview data refresh checker (every 30 seconds)
   useEffect(() => {
-    if (!user) return;
+    if (!user || rules) return; // paused while an interview is open
 
     const checkForUpdates = () => {
       const now = new Date();
@@ -90,7 +90,7 @@ const Dashboard = () => {
 
     const interval = setInterval(checkForUpdates, 10000);
     return () => clearInterval(interval);
-  }, [interviewsData, user, fetchAllInterviewData]);
+  }, [interviewsData, user, fetchAllInterviewData, rules]);
 
   useEffect(() => {
     fetchCurrentUserData();
@@ -104,9 +104,10 @@ const Dashboard = () => {
 
   // Time updating
   useEffect(() => {
+    if (rules) return undefined; // the clock only drives the dashboard countdowns
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [rules]);
 
   const handleClick = async (interview) => {
     try {

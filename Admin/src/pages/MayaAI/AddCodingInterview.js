@@ -19,7 +19,7 @@ import { useNavigate } from "react-router-dom"
 import { toast } from "react-toastify";
 import * as XLSX from "xlsx";
 import { apiUrl, getErrorMessage } from "../../config/api";
-import { useAuth } from "../../context/AuthContext";
+import useTenantSelection, { TenantSelect } from "./useTenantSelection";
 
 const levelOptions = [
   { label: "Easy", value: "easy" },
@@ -45,7 +45,8 @@ const CODING_QUESTIONS_COUNT = 2;
 const AddCodingInterview = (props) => {
   document.title = "Add Coding Interview | Mpod";
 
-  const { user } = useAuth();
+  const tenantSelection = useTenantSelection();
+  const { user, tenantId } = tenantSelection;
   const [selectedLevel, setSelectedLevel] = useState(null);
   const [startDate, setStartDate] = useState(null);
   const [rollNo, setRollNo] = useState("");
@@ -114,6 +115,7 @@ const AddCodingInterview = (props) => {
   };
 
   const validate = () => {
+    if (!tenantId) return "Select a college";
     if (!selectedPlatform) return "Please select a platform.";
     if (!selectedInterviewType) return "Please select interview type.";
     if (!selectedLevel) return "Please select complexity level.";
@@ -142,7 +144,7 @@ const AddCodingInterview = (props) => {
           "questions_count": CODING_QUESTIONS_COUNT,
           "status": selectedStatus.value,
           "created_by": user.roll_no,
-          "tenant_id": user.t_id
+          "tenant_id": tenantId
         };
         await axios.post(apiUrl('add-coding-interview'), dataList);
         toast.success("Interview added successfully!");
@@ -156,7 +158,7 @@ const AddCodingInterview = (props) => {
           "questions_count": CODING_QUESTIONS_COUNT,
           "status": selectedStatus.value,
           "created_by": user.roll_no,
-          "tenant_id": user.t_id,
+          "tenant_id": tenantId,
           "type": selectedInterviewType.value
         };
         const formData = new FormData();
@@ -200,6 +202,7 @@ const AddCodingInterview = (props) => {
             <CardBody>
               <h4 className="card-title">Add Coding Interview</h4>
               <AvForm className="needs-validation">
+                <TenantSelect {...tenantSelection} id="interviewTenant" className="mb-3" />
                 <Row>
                   <Col md="6">
                     <div className="mb-3">

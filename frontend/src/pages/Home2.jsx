@@ -59,6 +59,7 @@ function Home2() {
       <div className="wrapper-style" id="wrapper">
         <Header />
         <InterviewFlow
+          kiosk
           details={details}
           startSession={() =>
             api.post("kiosk/start", { interview_id: details._id, interview_type: details.interview_type }, { skipAuthRedirect: true })

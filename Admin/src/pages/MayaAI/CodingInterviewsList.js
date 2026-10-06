@@ -10,7 +10,7 @@ import { saveAs } from "file-saver";
 import { toast } from "react-toastify";
 import { setBreadcrumbItems } from "../../store/actions";
 import { apiUrl, getErrorMessage } from "../../config/api";
-import { useAuth } from "../../context/AuthContext";
+import useTenantSelection, { TenantSelect } from "./useTenantSelection";
 import LoadState from "../../components/Common/LoadState";
 import ConfirmModal from "../../components/Common/ConfirmModal";
 import { deleteResultMessage, studentReportUrl } from "./interviewHelpers";
@@ -19,7 +19,8 @@ import "./datatables.scss";
 const CodingInterviewsList = (props) => {
   document.title = "Coding Interviews List | Mpod";
 
-  const { user } = useAuth();
+  const tenantSelection = useTenantSelection();
+  const { tenantId, tenantName } = tenantSelection;
   const [interviewsData, setInterviewsData] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDate, setFilterDate] = useState(""); // Holds selected date
@@ -39,10 +40,16 @@ const CodingInterviewsList = (props) => {
   }, []);
 
   const fetchInterviewsData = useCallback(async () => {
+    if (!tenantId) {
+      setInterviewsData([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.get(apiUrl(`get-all-coding-interview-details/${user.t_id}`));
+      const response = await axios.get(apiUrl(`get-all-coding-interview-details/${tenantId}`));
       setInterviewsData(Array.isArray(response.data) ? response.data : []);
     } catch (err) {
       setInterviewsData([]);
@@ -50,7 +57,7 @@ const CodingInterviewsList = (props) => {
     } finally {
       setLoading(false);
     }
-  }, [user.t_id]);
+  }, [tenantId]);
 
   useEffect(() => {
     fetchInterviewsData();
@@ -142,9 +149,16 @@ const CodingInterviewsList = (props) => {
             View
           </a>
         ) : (
-          <Button color="danger" size="sm" onClick={() => setSelectedInterviewId(interview._id)}>
-            Delete
-          </Button>
+          <>
+            {interview.interview_status === "Upcoming" && (
+              <Link to={`/edit-coding-interview/${interview._id}`} className="btn btn-primary btn-sm me-2">
+                Edit
+              </Link>
+            )}
+            <Button color="danger" size="sm" onClick={() => setSelectedInterviewId(interview._id)}>
+              Delete
+            </Button>
+          </>
         ),
     },
   ];
@@ -176,12 +190,13 @@ const CodingInterviewsList = (props) => {
         <Col className="col-12">
           <Card>
             <CardBody className="d-flex justify-content-between align-items-center">
-              <CardTitle className="h4">{user.organization} - Coding Interviews List</CardTitle>
-              <div>
-                <Button color="success" onClick={downloadExcel} className="me-2" disabled={!filteredData.length}>
+              <CardTitle className="h4">{tenantName ? `${tenantName} - ` : ""}Coding Interviews List</CardTitle>
+              <div className="d-flex align-items-center gap-2">
+                <TenantSelect {...tenantSelection} />
+                <Button color="success" onClick={downloadExcel} className="text-nowrap" disabled={!filteredData.length}>
                   Download Excel
                 </Button>
-                <Link to="/add-coding-interview" className="btn btn-primary">
+                <Link to="/add-coding-interview" className="btn btn-primary text-nowrap">
                   ADD CODING INTERVIEW
                 </Link>
               </div>
@@ -216,8 +231,8 @@ const CodingInterviewsList = (props) => {
               <LoadState
                 loading={loading}
                 error={error}
-                empty={!filteredData.length}
-                emptyText="No coding interviews found"
+                empty={!tenantId || !filteredData.length}
+                emptyText={tenantId ? "No coding interviews found" : "Select a college"}
                 onRetry={fetchInterviewsData}
               >
                 <BootstrapTable

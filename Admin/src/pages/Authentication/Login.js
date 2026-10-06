@@ -19,6 +19,19 @@ const messageForError = error => {
   return serverMessage || "Login failed. Please try again."
 }
 
+// Only same-app relative paths are allowed as redirect targets (no "//host" or absolute URLs).
+const safeRedirectPath = value =>
+  typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\") &&
+  value.split("?")[0] !== "/login"
+    ? value
+    : null
+
+// Where to go after login: ?next=<path> (set by the 401 interceptor) or state.from (set by the route guard).
+const redirectTarget = location => {
+  const next = new URLSearchParams(location.search).get("next")
+  return safeRedirectPath(next) || safeRedirectPath(location.state && location.state.from) || "/dashboard"
+}
+
 const Login = () => {
   const navigate = useNavigate()
   const location = useLocation()
@@ -48,17 +61,16 @@ const Login = () => {
           setError("Logged in, but the session could not be loaded. Please check that cookies are enabled.")
           return
         }
-        const from = location.state && location.state.from
-        navigate(from && from !== "/login" ? from : "/dashboard", { replace: true })
+        navigate(redirectTarget(location), { replace: true })
       } catch (err) {
         setError(messageForError(err))
       }
     },
   })
 
-  // Already signed in (valid cookie) -> go straight to the dashboard.
+  // Already signed in (valid cookie) -> go straight to the requested page (or the dashboard).
   if (!loading && user && !validation.isSubmitting) {
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to={redirectTarget(location)} replace />
   }
 
   return (

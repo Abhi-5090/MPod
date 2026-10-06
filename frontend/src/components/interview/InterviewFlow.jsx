@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { ThreeDots } from "react-loader-spinner";
 import { errorMessage, profilePicUrl } from "../../api/axiosInstance";
@@ -16,54 +16,83 @@ const typeLabel = (t) => (t === "ai generated" ? "Technology" : t === "company" 
  *  details:      interview summary for the instructions screen
  *  startSession: () => Promise<axios response with the session>
  *  onExit:       called when the student leaves without starting (optional)
+ *  kiosk:        true on the mPod kiosk (keeps the attempt token so the report can open there)
+ *
+ * The attempt is claimed on the server as soon as this screen opens, so the
+ * instructions countdown can never push the start past the allowed window.
  */
-function InterviewFlow({ details, startSession, onExit }) {
+function InterviewFlow({ details, startSession, onExit, kiosk }) {
   const [stage, setStage] = useState("intro"); // intro | starting | running | submitting | evaluating | error
   const [timer, setTimer] = useState(details.in_progress || details.resumable ? 3 : INTRO_SECONDS);
   const [session, setSession] = useState(null);
   const [error, setError] = useState("");
   const [imgSrc, setImgSrc] = useState(profilePicUrl(details.roll_no));
   const clientRef = useRef(null);
-  const startedRef = useRef(false);
+  const startingRef = useRef(false);
+  const emotionsRef = useRef(undefined);
+  const startSessionRef = useRef(startSession);
+  startSessionRef.current = startSession;
+  const [ready, setReady] = useState(false);
 
+  // Claim the attempt and fetch the questions right away (retries "being prepared").
+  const begin = useCallback(async (attempt = 0) => {
+    if (startingRef.current) return;
+    startingRef.current = true;
+    try {
+      const res = await startSessionRef.current();
+      clientRef.current = createSessionClient(res.data, { rememberToken: Boolean(kiosk) });
+      setSession(res.data);
+      setReady(true);
+    } catch (err) {
+      startingRef.current = false;
+      const data = err && err.response && err.response.data;
+      if (data && data.code === "PREPARING" && attempt < 20) {
+        setTimeout(() => begin(attempt + 1), 3000);
+        return;
+      }
+      setError(errorMessage(err, "Could not start the interview."));
+      setStage("start-error");
+    }
+  }, [kiosk]);
+
+  useEffect(() => {
+    begin();
+  }, [begin]);
+
+  // Instructions countdown; the interview opens when it ends and the questions are ready.
   useEffect(() => {
     if (stage !== "intro") return undefined;
     if (timer <= 0) {
-      begin();
+      setStage(ready ? "running" : "starting");
       return undefined;
     }
     const t = setTimeout(() => setTimer((x) => x - 1), 1000);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timer, stage]);
+  }, [timer, stage, ready]);
 
-  const begin = async () => {
-    if (startedRef.current) return;
-    startedRef.current = true;
+  useEffect(() => {
+    if (stage === "starting" && ready) setStage("running");
+  }, [stage, ready]);
+
+  const retryStart = () => {
+    setError("");
+    setTimer(0);
     setStage("starting");
-    try {
-      const res = await startSession();
-      clientRef.current = createSessionClient(res.data);
-      setSession(res.data);
-      setStage("running");
-    } catch (err) {
-      startedRef.current = false;
-      setError(errorMessage(err, "Could not start the interview."));
-      setStage("error");
-    }
+    begin();
   };
 
   // Called by the interview component once every answer is saved.
-  const finish = async (emotions) => {
+  const finish = useCallback(async (emotions) => {
+    if (emotions !== undefined) emotionsRef.current = emotions;
     setStage("submitting");
     try {
-      await clientRef.current.submit(emotions);
+      await clientRef.current.submit(emotionsRef.current);
       setStage("evaluating");
     } catch (err) {
       setError(errorMessage(err, "Could not submit the interview. Your answers are saved; please try again."));
       setStage("submit-error");
     }
-  };
+  }, []);
 
   // Poll until the background evaluation is done, then open the report.
   useEffect(() => {
@@ -123,7 +152,7 @@ function InterviewFlow({ details, startSession, onExit }) {
     );
   }
 
-  if (stage === "error" || stage === "submit-error") {
+  if (stage === "error" || stage === "submit-error" || stage === "start-error") {
     return (
       <div className="mpod-center">
         <div className="mpod-panel mpod-panel-narrow" role="alert">
@@ -132,6 +161,9 @@ function InterviewFlow({ details, startSession, onExit }) {
           <div className="mpod-actions">
             {stage === "submit-error" && (
               <button className="mpod-btn mpod-btn-primary" onClick={() => finish()}>Try submitting again</button>
+            )}
+            {stage === "start-error" && (
+              <button className="mpod-btn mpod-btn-primary" onClick={retryStart}>Try again</button>
             )}
             {onExit && <button className="mpod-btn" onClick={onExit}>Back</button>}
           </div>
@@ -194,7 +226,9 @@ function InterviewFlow({ details, startSession, onExit }) {
               <li>Good luck!</li>
             </ul>
             <div className="mpod-actions">
-              <button className="mpod-btn mpod-btn-primary" onClick={() => setTimer(0)}>Start now</button>
+              <button className="mpod-btn mpod-btn-primary" onClick={() => setTimer(0)} disabled={!ready}>
+                {ready ? "Start now" : "Preparing..."}
+              </button>
               {onExit && <button className="mpod-btn" onClick={onExit}>Back</button>}
             </div>
           </div>
@@ -211,6 +245,7 @@ InterviewFlow.propTypes = {
   details: PropTypes.object.isRequired,
   startSession: PropTypes.func.isRequired,
   onExit: PropTypes.func,
+  kiosk: PropTypes.bool,
 };
 
 export default InterviewFlow;

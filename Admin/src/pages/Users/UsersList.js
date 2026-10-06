@@ -11,6 +11,7 @@ import LoadState from "../../components/Common/LoadState";
 import ConfirmModal from "../../components/Common/ConfirmModal";
 import useTenantUsers from "./useTenantUsers";
 import "./datatables.scss";
+import { canManageUserRole } from "../../config/roles";
 
 const breadcrumbItems = [
   { title: "Mpod", link: "#" },
@@ -22,8 +23,9 @@ const UsersList = (props) => {
   document.title = "Users List | Mpod";
 
   const { setBreadcrumbItems } = props;
-  const { isPlatform, tenants, tenantId, setTenantId, tenantName, users, setUsers, loading, error, reload } =
+  const { user: viewer, isPlatform, tenants, tenantId, setTenantId, tenantName, users, setUsers, loading, error, reload } =
     useTenantUsers();
+  const viewerRole = viewer && viewer.role;
   const [userToDeactivate, setUserToDeactivate] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -86,7 +88,9 @@ const UsersList = (props) => {
             }}
           />
         ),
-        actions: (
+        actions: !canManageUserRole(viewerRole, u.role) ? (
+          <span className="text-muted small">—</span>
+        ) : (
           <div>
             <Link to={`/edit-user/${u._id}`} className="btn btn-info btn-sm me-2">
               Edit
@@ -103,7 +107,7 @@ const UsersList = (props) => {
         ),
       })),
     }),
-    [users]
+    [users, viewerRole]
   );
 
   return (

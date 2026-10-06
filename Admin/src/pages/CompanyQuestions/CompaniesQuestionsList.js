@@ -39,7 +39,10 @@ const CompanyQuestionsList = props => {
       setQuestions(Array.isArray(response.data) ? response.data : [])
     } catch (err) {
       setQuestions([])
-      setError(getErrorMessage(err, "Failed to load company questions."))
+      // Backend answers 404 when there are no questions (for this tag) yet.
+      if (err.response?.status !== 404) {
+        setError(getErrorMessage(err, "Failed to load company questions."))
+      }
     } finally {
       setLoading(false)
     }
@@ -51,7 +54,8 @@ const CompanyQuestionsList = props => {
       const list = response.data && Array.isArray(response.data.tags) ? response.data.tags : []
       setTags(list)
     } catch (err) {
-      toast.error(getErrorMessage(err, "Failed to load tags."))
+      if (err.response?.status === 404) setTags([])
+      else toast.error(getErrorMessage(err, "Failed to load tags."))
     }
   }
 

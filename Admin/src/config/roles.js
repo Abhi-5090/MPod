@@ -24,3 +24,12 @@ export const ROLES = {
 
 export const isPlatformRole = role => PLATFORM.includes(role)
 export const hasRole = (user, roles) => !!(user && roles && roles.includes(user.role))
+
+// Whether `viewerRole` may edit/deactivate a user with `targetRole` (mirrors backend checks).
+// Tenant staff may only manage students; platform roles may manage everyone except
+// admin/superadmin accounts, which only a superadmin may manage.
+export const canManageUserRole = (viewerRole, targetRole) => {
+  if (!isPlatformRole(viewerRole)) return !ALL_STAFF.includes(targetRole)
+  if (PLATFORM.includes(targetRole)) return viewerRole === "superadmin"
+  return true
+}
