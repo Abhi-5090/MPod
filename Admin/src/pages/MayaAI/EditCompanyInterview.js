@@ -10,9 +10,9 @@ import {
   Input,
   Label,
 } from "reactstrap";
-import { AvForm, AvField } from "availity-reactstrap-validation";
+import { AvForm } from "availity-reactstrap-validation";
 import Select from "react-select"
-import Flatpickr from "react-flatpickr"
+import DateTimePicker from "./DateTimePicker";
 import { connect } from "react-redux";
 import { setBreadcrumbItems } from "../../store/actions";
 import axios from "axios";
@@ -224,16 +224,16 @@ const EditCompanyInterview = (props) => {
                   <Col md="6">
                     <div className="mb-3">
                       <Label htmlFor="validationCustom01">No. of Questions</Label>
-                      <AvField
+                      <Input
                         name="no_of_questions"
-                        placeholder="No.of Questions "
+                        placeholder="No. of Questions"
                         type="number"
-                        errorMessage="Enter no. of questions"
+                        min="1"
+                        max="30"
                         className="form-control"
-                        validate={{ required: { value: true } }}
                         id="validationCustom01"
                         onChange={handleChange}
-                        value={data.no_of_questions}
+                        value={data.no_of_questions ?? ""}
                       />
                     </div>
                   </Col>
@@ -242,21 +242,7 @@ const EditCompanyInterview = (props) => {
                       <FormGroup className="mb-4">
                         <Label>Start Date and Time</Label>
                         <InputGroup>
-                        <Flatpickr
-                            value={startDate}
-                            className="form-control d-block"
-                            options={{
-                              enableTime: true,
-                              dateFormat: "Y-m-d H:i",
-                              altInput: true,
-                              altFormat: "F j, Y h:i K",
-                              onChange: function (selectedDates) {
-                                if (selectedDates.length > 0) {
-                                  setStartDate(selectedDates[0]);
-                                }
-                              }
-                            }}
-                          />
+                        <DateTimePicker value={startDate} onChange={(d) => setStartDate(d)} allowPast />
                         </InputGroup>
                       </FormGroup>
                     </div>

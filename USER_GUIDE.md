@@ -139,13 +139,13 @@ Go to **Interviews**, then the list for the interview type, then **Add**:
 | Type | You choose |
 |---|---|
 | Technology | Technology, modules, topics, level, number of questions |
-| Company | Companies, rounds, types, tag, number of questions (the available count is shown) |
+| Company | Companies, type (Service Based / Product Based), rounds, tag (optional), number of questions. **Available Questions** shows how many bank questions match; it must be at least the number you ask for. |
 | Coding | Level and number of problems |
 
 For every type, you also choose:
 - **Platform**: **web** (student website) or **mpod** (campus kiosk)
-- **Start date & time**
-- **Single student** (enter the roll number) or **Bulk** (upload an Excel file with a `roll_no` column; **Download sample** gives the template)
+- **Single**: pick the student from the dropdown, which lists your college's active students (type a roll number or name to search). **Bulk**: upload an Excel file with a `roll_no` column; **Download sample** gives the template.
+- **Start date & time**: pick a day in the calendar, then set the hour, minutes and AM/PM. Past days can't be selected. Times are in your local time (IST).
 
 What happens when you schedule:
 - **One credit** is used per interview. If the college runs out, scheduling stops and the remaining rows report "Your credits are not enough".

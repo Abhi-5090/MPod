@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { REQUIRED } from "../../config/validation";
 import {
   Row,
   Col,
@@ -162,7 +163,7 @@ const EditInterviewQuestion = (props) => {
                         rows="4"
                         value={data.question || ""}
                         onChange={handleChange}
-                        validate={{ required: { value: true } }}
+                        validate={REQUIRED}
                       />
                     </div>
                   </Col>
@@ -178,7 +179,7 @@ const EditInterviewQuestion = (props) => {
                         rows="4"
                         value={data.answer || ""}
                         onChange={handleChange}
-                        validate={{ required: { value: true } }}
+                        validate={REQUIRED}
                       />
                     </div>
                   </Col>

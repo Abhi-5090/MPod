@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom"
 import { Provider } from "react-redux"
 
 import App from "./App"
+import "flatpickr/dist/themes/material_blue.css"
 import "./i18n"
 import store from "./store"
 import setupAxios from "./api/setupAxios"

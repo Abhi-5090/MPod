@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react"
+import { REQUIRED } from "../../config/validation";
 import { Row, Col, Card, CardBody, Button, Label, Spinner } from "reactstrap"
 import { AvForm, AvField } from "availity-reactstrap-validation"
 import { connect } from "react-redux"
@@ -161,7 +162,7 @@ const EditModule = props => {
                           type="text"
                           errorMessage="Enter Module Name"
                           className="form-control"
-                          validate={{ required: { value: true } }}
+                          validate={REQUIRED}
                           id="validationCustom01"
                           onChange={e => setData({ ...data, module_name: e.target.value })}
                           value={data.module_name || ""}

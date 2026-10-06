@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react"
+import { REQUIRED } from "../../config/validation";
 import { Row, Col, Card, CardBody, FormGroup, Button, Label, Spinner } from "reactstrap"
 import { AvForm, AvField } from "availity-reactstrap-validation"
 import { connect } from "react-redux"
@@ -128,7 +129,7 @@ const EditTechnology = props => {
                           type="text"
                           errorMessage="Enter Technology Name"
                           className="form-control"
-                          validate={{ required: { value: true } }}
+                          validate={REQUIRED}
                           id="technology_name"
                           onChange={e => setData({ ...data, technology_name: e.target.value })}
                           value={data.technology_name || ""}

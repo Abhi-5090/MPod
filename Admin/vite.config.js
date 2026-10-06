@@ -9,6 +9,8 @@ const BACKEND = process.env.MPOD_BACKEND_URL || "http://localhost:8002"
 export default defineConfig({
   base: "/admin/",
   plugins: [react({ include: /\.(js|jsx)$/ })],
+  // Some older libraries (draft-js editor) reference Node's `global`.
+  define: { global: "globalThis" },
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },

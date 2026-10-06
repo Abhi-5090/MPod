@@ -11,7 +11,8 @@ import {
 } from "reactstrap";
 import { AvForm } from "availity-reactstrap-validation";
 import Select from "react-select"
-import Flatpickr from "react-flatpickr"
+import DateTimePicker from "./DateTimePicker";
+import StudentSelect from "./StudentSelect";
 import { connect } from "react-redux";
 import { setBreadcrumbItems } from "../../store/actions";
 import axios from "axios";
@@ -79,9 +80,6 @@ const AddCodingInterview = (props) => {
     }
   };
 
-  const handleRollNoChange = (e) => {
-    setRollNo(e.target.value);
-  };
 
   const handlePlatformSelect = (selectedplatform) => {
     setSelectedPlatform(selectedplatform);
@@ -231,15 +229,8 @@ const AddCodingInterview = (props) => {
                   {selectedInterviewType?.value === "single" ? (
                     <Col md="6">
                       <div className="mb-3">
-                        <Label>Enter Roll No</Label>
-                        <Input
-                          type="text"
-                          name="roll_no"
-                          placeholder="Enter Roll No"
-                          value={rollNo}
-                          onChange={handleRollNoChange}
-                          required
-                        />
+                        <Label>Student</Label>
+                        <StudentSelect tenantId={tenantId} value={rollNo} onChange={setRollNo} />
                       </div>
                     </Col>
                   ) : selectedInterviewType?.value === "bulk" ? (
@@ -281,22 +272,7 @@ const AddCodingInterview = (props) => {
                     <div className="mb-3">
                       <FormGroup className="mb-4">
                         <Label>Start Date and Time</Label>
-                        <Flatpickr
-                          className="form-control d-block"
-                          placeholder="dd M, yyyy HH:mm"
-                          options={{
-                            enableTime: true,
-                            dateFormat: "Y-m-d H:i",
-                            altInput: true,
-                            altFormat: "F j, Y h:i K",
-                            onChange: function (selectedDates) {
-                              if (selectedDates.length > 0) {
-                                const isoDate = selectedDates[0].toISOString();
-                                setStartDate(isoDate);
-                              }
-                            }
-                          }}
-                        />
+                        <DateTimePicker value={startDate} onChange={(d) => setStartDate(d ? d.toISOString() : "")} />
 
                       </FormGroup>
                     </div>

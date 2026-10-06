@@ -75,14 +75,30 @@ async function main() {
     ]);
   }
 
-  if (!(await Company.exists({ company_name: "Demo Corp" }))) {
-    const company = await Company.create({ company_name: "Demo Corp", added_date: new Date().toISOString(), added_by: "seed", status: 1 });
-    const tag = await Tag.create({ tag_name: "Freshers", createdAt: new Date().toISOString(), added_by: "seed", status: 1 });
-    await CompanyQuestion.insertMany(
-      ["Tell me about yourself.", "Explain OOP concepts.", "What is a REST API?", "Describe a challenging project."].map((q) => ({
-        company: company._id, type: "Technical", round: "TR1", year: "2025", tag: tag._id, question: q, added_by: "seed", status: 1,
-      }))
-    );
+  // Company question bank. type/round values must match the admin forms:
+  // type = service_based | product_based, round = TR1..TR4 | MR1 | HR1.
+  let company = await Company.findOne({ company_name: "Demo Corp" });
+  if (!company) company = await Company.create({ company_name: "Demo Corp", added_date: new Date().toISOString(), added_by: "seed", status: 1 });
+  let tag = await Tag.findOne({ tag_name: "Freshers" });
+  if (!tag) tag = await Tag.create({ tag_name: "Freshers", createdAt: new Date().toISOString(), added_by: "seed", status: 1 });
+  // Older seeds used type "Technical", which no admin form can select.
+  await CompanyQuestion.updateMany({ added_by: "seed", type: "Technical" }, { $set: { type: "service_based" } });
+  const bank = {
+    TR1: ["Explain the four pillars of OOP.", "What is the difference between an array and a linked list?", "What is a REST API?", "Explain normalization in databases.", "What happens when you type a URL into a browser?"],
+    TR2: ["How does a hash map work internally?", "Explain the difference between processes and threads.", "What is an index in a database and when would you use one?"],
+    HR1: ["Tell me about yourself.", "Describe a challenging project you worked on.", "Where do you see yourself in five years?", "Why do you want to join our company?"],
+  };
+  for (const type of ["service_based", "product_based"]) {
+    for (const [round, questions] of Object.entries(bank)) {
+      for (const question of questions) {
+        // eslint-disable-next-line no-await-in-loop
+        await CompanyQuestion.updateOne(
+          { company: company._id, type, round, question },
+          { $setOnInsert: { company: company._id, type, round, year: "2025", tag: tag._id, question, added_by: "seed", status: 1 } },
+          { upsert: true }
+        );
+      }
+    }
   }
 
   if (!(await CodingQuestion.exists({ problem_name: "Two Sum" }))) {

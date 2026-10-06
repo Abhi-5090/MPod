@@ -291,6 +291,19 @@ const getUsers = asyncHandler(async (req, res) => {
   return res.status(200).json(users);
 });
 
+/**
+ * GET /get-students/:id (tenant id) — active students of a college, for picking who to
+ * schedule an interview for. Available to every staff role that can schedule.
+ */
+const getStudents = asyncHandler(async (req, res) => {
+  const tenantId = resolveTenantScope(req, req.params.id);
+  const students = await User.find({ tenant_id: tenantId, status: { $ne: 0 }, role: { $nin: STAFF_ROLES } })
+    .select("roll_no first_name branch passout_year")
+    .sort({ roll_no: 1 })
+    .lean();
+  return res.status(200).json(students);
+});
+
 async function loadManagedUser(req, id) {
   const user = await User.findById(toObjectId(id, "user id"));
   if (!user) throw notFound("User not found");
@@ -1039,6 +1052,7 @@ module.exports = {
   uploadProfilePics,
   serveProfilePic,
   getUsers,
+  getStudents,
   getUserById,
   updateUser,
   deleteUser,

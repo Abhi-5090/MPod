@@ -26,6 +26,7 @@ const manageUsers = requireStaff(CAN.manageUsers);
 Router.post("/api/add-user", manageUsers, upload.cleanupUpload, upload.single("file", "sheet"), User.addUser);
 Router.post("/api/upload-profile-pics", manageUsers, upload.cleanupUpload, upload.single("profile_pics_zip", "zip"), User.uploadProfilePics);
 Router.get("/api/get-users/:id", manageUsers, User.getUsers);
+Router.get("/api/get-students/:id", requireStaff(CAN.scheduleInterviews), User.getStudents);
 Router.get("/api/get-user-by-id/:id", manageUsers, User.getUserById);
 Router.put("/api/update-user/:id", manageUsers, User.updateUser);
 Router.delete("/api/delete-user/:id", manageUsers, User.deleteUser);

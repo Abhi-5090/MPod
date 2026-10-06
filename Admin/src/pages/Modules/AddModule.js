@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react"
+import { REQUIRED } from "../../config/validation";
 import { Row, Col, Card, CardBody, Button, Label, Spinner } from "reactstrap"
 import { AvForm, AvField } from "availity-reactstrap-validation"
 import Select from "react-select"
@@ -112,7 +113,7 @@ const AddModule = props => {
                         type="text"
                         errorMessage="Enter Module Name"
                         className="form-control"
-                        validate={{ required: { value: true } }}
+                        validate={REQUIRED}
                         id="validationCustom01"
                         onChange={e => setModuleName(e.target.value)}
                       />
