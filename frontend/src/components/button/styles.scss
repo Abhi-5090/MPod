@@ -1,0 +1,123 @@
+@use '../../scss/' as *;
+/* button 
+--------------------------------------------------*/
+.sc-button {
+    display      : inline-block;
+    border       : 1px solid var(--primary-color3);
+    color        : #fff;
+    background-color: var(--primary-color3);
+    box-sizing   : border-box;
+    padding      : 18px 36px;
+    border-radius: 5px;
+    @include transition3;
+    span {
+        font-weight       : 500;
+        font-size         : 16px;
+        line-height       : 18px;
+        position          : relative;
+        @include transition3;
+    }
+    &:hover,
+    &.active {
+        border-color: transparent;
+        outline: 0 none;
+    }
+}
+
+.sc-button.btn-4:hover,
+.sc-button.btn-3:hover,
+.sc-button.btn-5 {
+    background-color: #8E2AC3;
+    border: 1px solid #8E2AC3;
+}
+
+.sc-button.btn-2 {
+    background-color: transparent;
+    border: 1px solid var(--primary-color6);
+}
+
+.sc-button span,
+.sc-button.btn-7:hover span,
+.is_dark .sc-button {
+    color: #fff;
+}
+
+.is_dark .sc-button.btn-2:hover,
+.sc-button.btn-5:hover,
+.is_dark .sc-button.btn-1:hover,
+.sc-button.fl-button:hover{
+    border: 1px solid #fff;
+    background-color: #fff;
+    box-shadow: 0px 14px 14px rgba(95, 58, 252, 0.18);
+}
+.sc-button.btn-3,
+.sc-button.btn-5,
+.sc-button.fl-button {
+    box-shadow: 0px 14px 14px rgba(95, 58, 252, 0.18);
+}
+
+.sc-button.btn-2:hover {
+    background-color: var(--primary-color3);
+    border       : 1px solid var(--primary-color3);
+}
+
+.sc-button.btn-2:hover span {
+    color: var(--primary-color);
+}
+
+.is_dark .sc-button.btn-2:hover span,
+.sc-button.btn-5:hover span,
+.sc-button.fl-button:hover span,
+.sc-button.fl-button.active span {
+    color: var(--primary-color3);
+    z-index: 40;
+}
+
+.sc-button.btn-2 span {
+    color: var(--primary-color2);
+}
+
+.sc-button.btn-6 {
+    background-color: #13051808;
+    border: 1px solid #13051808;
+}
+
+.sc-button.btn-6.bt {
+    background: #13051812;
+    border: 1px solid #13051812;
+}
+
+.sc-button.btn-4 {
+    background-color: #FFFFFF1A;
+    border: 1px solid var(--primary-color6);
+}
+
+.sc-button.btn-6.tf-style,
+.is_dark .sc-button.btn-6 {
+    background-color: #FFFFFF1A;
+    border: 1px solid var(--primary-color6);
+}
+
+.sc-button.btn-6 span {
+    color: var(--primary-color8);
+}
+
+.sc-button.btn-6.tf-style span,
+.sc-button.btn-6:hover span {
+    color: #fff;
+}
+
+.sc-button.btn-7:hover,
+.sc-button.btn-6:hover {
+    background-color: var(--primary-color3);
+    border: 1px solid var(--primary-color3);
+}
+
+.sc-button.btn-7 {
+    background:  var(--primary-color5);
+    border: 1px solid var(--primary-color5);
+}
+  
+.sc-button.btn-7 span {
+    color: var(--primary-color4);
+}

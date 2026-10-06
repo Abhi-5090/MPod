@@ -1,0 +1,6 @@
+{
+    "rules": {
+      "no-restricted-globals": ["error", "location"]
+    }
+  }
+  

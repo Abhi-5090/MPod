@@ -1,0 +1,39 @@
+
+{
+    "categoryData": [
+      { "category_name": "Coding", "value": "coding" },
+      { "category_name": "Low Code", "value": "low code" },
+      { "category_name": "No Code", "value": "no code" }
+    ],
+    "levelData": [
+      { "level_name": "Beginner", "value": "beginner" },
+      { "level_name": "Intermediate", "value": "intermediate" },
+      { "level_name": "Advanced", "value": "advanced" }
+    ],
+    "proctorData": [
+      { "proctor_name": "Test Center", "value": "test center" },
+      { "proctor_name": "Online", "value": "online" },
+      { "proctor_name": "Test Center & Online", "value": "test center & online" }
+    ], 
+    "testPlatformData": [
+      { "test_platform_name": "Pearson Authorized Testing Center", "value": "Pearson Authorized Testing Center" },
+      { "test_platform_name": "Pearson ONVUE Testing Platform", "value": "Pearson ONVUE Testing Platform" },
+      { "test_platform_name": "Kryterion Test Center", "value": "Kryterion Test Center" },
+      { "test_platform_name": "Kryterion Webassessor", "value": "Kryterion Webassessor" },
+      { "test_platform_name": "Certiport Test Center", "value": "Certiport Test Center" }
+    ],
+    "scoreCardData": [
+      { "score_card_name": "Available", "value": "available" },
+      { "score_card_name": "Not Available", "value": "not available" }
+    ],
+    "offeringData": [
+      { "offering_name": "Offered", "value": "offered" },
+      { "offering_name": "Not Offered", "value": "not offered" }
+    ],
+    "technologyData": [
+      { "technology_name": "Technology1", "value": "technology1" },
+      { "technology_name": "Technology2", "value": "technology2" },
+      { "technology_name": "Technology3", "value": "technology3" }
+
+    ]
+  }

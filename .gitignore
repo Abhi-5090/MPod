@@ -1,0 +1,33 @@
+# Dependencies & builds
+node_modules/
+build/
+dist/
+coverage/
+.eslintcache
+*.log
+3000-fe-build
+
+# Secrets - never commit
+.env
+.env.*
+!.env.example
+backend/src/config/*.json
+
+# Student data / runtime uploads (PII)
+backend/uploads/
+backend/src/uploads/profile-pics/*
+!backend/src/uploads/profile-pics/default.png
+!backend/src/uploads/profile-pics/logo_header.png
+_pii_quarantine/
+
+# Unused face-api models (only the 4 below are loaded by the app)
+backend/public/models/*
+!backend/public/models/tiny_face_detector/
+!backend/public/models/face_landmark_68/
+!backend/public/models/face_expression/
+!backend/public/models/face_recognition/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

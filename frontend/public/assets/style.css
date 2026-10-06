@@ -1,0 +1,30 @@
+@font-face {
+  font-family: 'nufti';
+  src:  url('fonts/nufti.eot?d82atk');
+  src:  url('fonts/nufti.eot?d82atk#iefix') format('embedded-opentype'),
+    url('fonts/nufti.ttf?d82atk') format('truetype'),
+    url('fonts/nufti.woff?d82atk') format('woff'),
+    url('fonts/nufti.svg?d82atk#nufti') format('svg');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+[class^="icon-nufti"], [class*=" icon-nufti"] {
+  /* use !important to prevent issues with browser extensions that change fonts */
+  font-family: 'nufti' !important;
+  speak: never;
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1;
+
+  /* Better Font Rendering =========== */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.icon-nuftienter:before {
+  content: "\e900";
+}

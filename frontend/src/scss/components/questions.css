@@ -1,0 +1,30 @@
+.speak-btn{
+    background: #7759f3;
+    
+    background: var(--primary-color3);
+    border: none;
+    border-radius: 5px;
+    color: #fff;
+    font-size: 16px;
+    line-height: 20px;
+    padding: 9px 11px;
+    right: 4px;
+    top: 6px;
+    transition: all .3s ease;
+}
+
+
+@media screen and (min-width:240px) {
+    .question-container{
+        margin-top: 200px !important;
+    }
+}
+
+
+
+
+@media screen and (max-width:729px) {
+    .question-container{
+        margin-top: 100px !important;
+    }
+}
