@@ -1,184 +1,97 @@
 const CodingQuestion = require("../models/codingQuestion");
-const Module = require("../models/module");
-const mongoose = require('mongoose');
-const xlsx = require('xlsx');
+const { asyncHandler, badRequest, notFound, toObjectId } = require("../lib/http");
 
-const addCodingQuestion = async (req, res, next) => {
-  try {
-    console.log("adding")
-    const { company, problem_name, complexity, time, description, input, output, constraints, added_by } = req.body;
+const COMPLEXITIES = ["easy", "medium", "hard"];
+const TEXT_LIMIT = 2 * 1024 * 1024; // descriptions may contain inline images
 
-    const codingQuestion = new CodingQuestion({
-      company,
-      problem_name,
-      complexity,
-      time,
-      description,
-      input,
-      output,
-      constraints,
-      added_by: "test"
-    });
-    const savedCodingQuestion = await codingQuestion.save();
-
-    if (savedCodingQuestion) {
-      return res.status(200).json(savedCodingQuestion);
-    } else {
-      return res.status(500).json({ message: "Failed to save questions." });
-    }
-  } catch (error) {
-    console.error('Error processing file:', error);
-    return res.status(500).json({ message: "Internal server error." });
+// Builds the editable fields from a request body; `partial` allows omitting fields.
+function readFields(b, partial) {
+  const out = {};
+  const has = (k) => b[k] !== undefined;
+  if (!partial || has("problem_name")) {
+    const v = String(b.problem_name ?? "").trim();
+    if (!v || v.length > 300) throw badRequest("Problem name is required (max 300 characters).");
+    out.problem_name = v;
   }
-};
-const getCodingQuestions = async (req, res, next) => {
-  try {
-    const questions = await CodingQuestion.aggregate([
-      {
-        $lookup: {
-          from: "companies",
-          localField: "company",
-          foreignField: "_id",
-          as: "companyInfo"
-        }
-      },
-      {
-        $addFields: {
-          company_name: { $arrayElemAt: ["$companyInfo.company_name", 0] },
-        }
-      },
-      {
-        $project: {
-          companyInfo: 0
-        }
-      }
-    ])
-    if (questions.length > 0) {
-      return res.status(200).json(questions);
-    } else {
-      return res.status(404).json({ message: "Questions not found" });
-    }
-  } catch (error) {
-    console.log(error)
-    return res.status(500).json({ message: "Internal server error." });
+  if (!partial || has("complexity")) {
+    const v = String(b.complexity ?? "").trim();
+    if (!COMPLEXITIES.includes(v.toLowerCase())) throw badRequest("Complexity must be easy, medium or hard.");
+    out.complexity = v;
   }
-};
-
-const getCodingQuestionById = async (req, res, next) => {
-  const questionId = req.params.id;
-  try {
-    const question = await CodingQuestion.aggregate([
-      {
-        $match: {
-          _id: new mongoose.Types.ObjectId(questionId)
-        }
-      }
-    ]);
-
-    if (!question || question.length === 0) {
-      return res.status(404).json({ message: "Topic not found" });
-    }
-    res.status(200).json(question[0]);
-  } catch (error) {
-    console.error("Error fetching topic:", error);
-    res.status(500).json({ message: "Internal server error" });
+  if (!partial || has("time")) {
+    const t = Number(b.time);
+    if (!Number.isFinite(t) || t <= 0 || t > 180) throw badRequest("Time must be between 1 and 180 minutes.");
+    out.time = t;
   }
-};
-const updateCodingQuestion = async (req, res, next) => {
-  const questionId = req.params.id;
-  const { problem_name, complexity, time, company, description, input, output, constraints } = req.body;
-
-  try {
-    const companyQuestion = await CodingQuestion.findById(questionId);
-    if (!companyQuestion) {
-      return res.status(404).json({ message: "Question not found" });
+  for (const k of ["description", "input", "output", "constraints"]) {
+    if (has(k)) {
+      const v = String(b[k] ?? "");
+      if (v.length > TEXT_LIMIT) throw badRequest(`${k} is too long.`);
+      out[k] = v;
     }
-
-    if (problem_name !== undefined) {
-      companyQuestion.problem_name = problem_name;
-    }
-    if (complexity !== undefined) {
-      companyQuestion.complexity = complexity;
-    }
-    if (time !== undefined) {
-      companyQuestion.time = time;
-    }
-    if (company !== undefined) {
-      companyQuestion.company = company;
-    }
-    if (description !== undefined) {
-      companyQuestion.description = description;
-    }
-    if (input !== undefined) {
-      companyQuestion.input = input;
-    }
-    if (output !== undefined) {
-      companyQuestion.output = output;
-    }
-    if (constraints !== undefined) {
-      companyQuestion.constraints = constraints;
-    }
-
-    await companyQuestion.save();
-
-    return res.status(200).json({ message: "Question updated successfully", companyQuestion });
-  } catch (error) {
-    console.error("Error updating Question:", error);
-    return res.status(500).json({ message: "Internal server error" });
   }
-};
-const deleteCodingQuestion = async (req, res, next) => {
-  const topicId = req.params.id;
-
-  try {
-    const deleteTopic = await Topic.findByIdAndDelete(topicId);
-
-    if (!deleteTopic) {
-      return res.status(404).json({ message: "Topic not found" });
-    }
-
-    return res.status(200).json({ message: "Topic deleted successfully" });
-  } catch (error) {
-    console.error("Error deleting Topic:", error);
-    return res.status(500).json({ message: "Internal server error" });
+  if (!partial && !String(out.description || "").trim()) throw badRequest("Description is required.");
+  if (has("company")) {
+    out.company = b.company ? toObjectId(b.company, "company") : undefined;
   }
+  return out;
 }
-const codingQuestionsCount = async (req, res, next) => {
-  try {
-    const result = await CodingQuestion.aggregate([
-      {
-        $match: {
-          status: 1, 
-        },
-      },
-      {
-        $group: {
-          _id: "$complexity", 
-          count: { $sum: 1 }, 
-        },
-      },
-    ]);
 
-    const formattedResult = {
-      easy: 0,
-      medium: 0,
-      hard: 0,
-    };
+const addCodingQuestion = asyncHandler(async (req, res) => {
+  const fields = readFields(req.body || {}, false);
+  const saved = await CodingQuestion.create({ ...fields, added_by: req.auth.user.roll_no, status: 1 });
+  return res.status(200).json(saved);
+});
 
-    result.forEach(item => {
-      const key = item._id?.toLowerCase();
-      if (formattedResult.hasOwnProperty(key)) {
-        formattedResult[key] = item.count;
-      }
-    });
+const getCodingQuestions = asyncHandler(async (req, res) => {
+  const questions = await CodingQuestion.aggregate([
+    { $lookup: { from: "companies", localField: "company", foreignField: "_id", as: "companyInfo" } },
+    { $addFields: { company_name: { $arrayElemAt: ["$companyInfo.company_name", 0] } } },
+    { $project: { companyInfo: 0 } },
+    { $sort: { createdAt: -1 } },
+  ]);
+  if (!questions.length) return res.status(404).json({ message: "Questions not found" });
+  return res.status(200).json(questions);
+});
 
-    return res.status(200).json(formattedResult);
-  } catch (error) {
-    console.error("Error in codingQuestionsCount:", error);
-    return res.status(500).json({ message: "Internal server error" });
+const getCodingQuestionById = asyncHandler(async (req, res) => {
+  const q = await CodingQuestion.findById(toObjectId(req.params.id, "question id")).lean();
+  if (!q) throw notFound("Question not found");
+  return res.status(200).json(q);
+});
+
+const updateCodingQuestion = asyncHandler(async (req, res) => {
+  const id = toObjectId(req.params.id, "question id");
+  const fields = readFields(req.body || {}, true);
+  const update = { $set: {} };
+  for (const [k, v] of Object.entries(fields)) {
+    if (v === undefined) {
+      update.$unset = update.$unset || {};
+      update.$unset[k] = "";
+    } else update.$set[k] = v;
   }
-};
+  const q = await CodingQuestion.findByIdAndUpdate(id, update, { new: true, runValidators: true });
+  if (!q) throw notFound("Question not found");
+  return res.status(200).json({ message: "Question updated successfully", companyQuestion: q });
+});
 
+const deleteCodingQuestion = asyncHandler(async (req, res) => {
+  const q = await CodingQuestion.findByIdAndDelete(toObjectId(req.params.id, "question id"));
+  if (!q) throw notFound("Question not found");
+  return res.status(200).json({ message: "Question deleted successfully" });
+});
+
+const codingQuestionsCount = asyncHandler(async (req, res) => {
+  const result = await CodingQuestion.aggregate([
+    { $match: { status: 1 } },
+    { $group: { _id: { $toLower: "$complexity" }, count: { $sum: 1 } } },
+  ]);
+  const counts = { easy: 0, medium: 0, hard: 0 };
+  result.forEach((r) => {
+    if (Object.prototype.hasOwnProperty.call(counts, r._id)) counts[r._id] = r.count;
+  });
+  return res.status(200).json(counts);
+});
 
 module.exports = {
   addCodingQuestion,
@@ -186,5 +99,5 @@ module.exports = {
   getCodingQuestionById,
   updateCodingQuestion,
   deleteCodingQuestion,
-  codingQuestionsCount
+  codingQuestionsCount,
 };

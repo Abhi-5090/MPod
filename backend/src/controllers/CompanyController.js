@@ -1,115 +1,60 @@
-const Company = require('../models/companies');
-const mongoose = require('mongoose')
-const AddCompany = async (req, res, next) => {
-    const { company_name, added_date, update_date, added_by, status } = req.body;
-    let company;
-    try {
-        company = new Company({
-            company_name,
-            added_date,
-            update_date,
-            added_by,
-            status,
-        });
-        await company.save().then(() => {
-            return res.status(201).json(company)
-        })
-    } catch (err) {
-        console.log(err);
-        res.status(400).json({
-            message: "Failed to add Company...!!!"
-        });
-    }
-    if (!company) {
-        return res.status(500).json({ message: "Company adding failed" })
-    }
-    //    return res.status(201).json({ message:topic })
-}
+const Company = require("../models/companies");
+const { asyncHandler, badRequest, notFound, conflict, toObjectId, escapeRegex } = require("../lib/http");
 
-const getCompanies = async (req, res, next) => {
-    try {
-        const companies = await Company.find({}).select('_id company_name');
-        return res.status(200).json(companies);
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ message: "No Companies found" });
-    }
+const cleanName = (v) => {
+  const name = String(v ?? "").trim();
+  if (name.length < 2 || name.length > 50) throw badRequest("Company name must be 2 to 50 characters.");
+  return name;
 };
+const actorName = (req) => String(req.auth.user.roll_no || "admin").slice(0, 20);
 
+const AddCompany = asyncHandler(async (req, res) => {
+  const company_name = cleanName(req.body?.company_name);
+  if (await Company.exists({ company_name: new RegExp(`^${escapeRegex(company_name)}$`, "i") })) {
+    throw conflict("A company with this name already exists.");
+  }
+  const company = await Company.create({
+    company_name,
+    added_date: new Date().toISOString(),
+    added_by: actorName(req),
+    status: Number(req.body?.status) === 0 ? 0 : 1,
+  });
+  return res.status(201).json(company);
+});
 
-const getCompanyById = async (req, res, next) => {
-    const id = req.params.id;
-    let company;
-    try {
-        company = await Company.findById(id);
-        return res.status(200).json(company)
-    } catch (err) {
-        console.log(err)
-    }
-}
+const getCompanies = asyncHandler(async (req, res) => {
+  const companies = await Company.find({}).select("_id company_name status").sort({ company_name: 1 }).lean();
+  return res.status(200).json(companies);
+});
 
-const updateCompany = async (req, res, next) => {
+const getCompanyById = asyncHandler(async (req, res) => {
+  const company = await Company.findById(toObjectId(req.params.id, "company id")).lean();
+  if (!company) throw notFound("Company not found.");
+  return res.status(200).json(company);
+});
 
-    const id = req.params.id;
-    let { company_name, added_date, update_date, added_by, status } = req.body;
-    let company;
-    try {
-        company = await Company.findByIdAndUpdate(id, { company_name, added_date, update_date, added_by, status });
-        company = await company.save()
-        return res.status(200).json({ message: "Company updated successfully" })
-    } catch (err) {
-        console.log(err)
-        return res.status(400).json({ message: "Company not updated" })
+const updateCompany = asyncHandler(async (req, res) => {
+  const id = toObjectId(req.params.id, "company id");
+  const set = { update_date: new Date().toISOString() };
+  if (req.body?.company_name !== undefined) set.company_name = cleanName(req.body.company_name);
+  if (req.body?.status !== undefined && req.body.status !== "") set.status = Number(req.body.status) === 0 ? 0 : 1;
+  const company = await Company.findByIdAndUpdate(id, { $set: set }, { new: true, runValidators: true });
+  if (!company) throw notFound("Company not found.");
+  return res.status(200).json({ message: "Company updated successfully" });
+});
 
-    }
-}
+const deleteCompany = asyncHandler(async (req, res) => {
+  const company = await Company.findByIdAndDelete(toObjectId(req.params.id, "company id"));
+  if (!company) throw notFound("Company not found.");
+  return res.status(200).json(company);
+});
 
+const getCompaniesNames = asyncHandler(async (req, res) => {
+  const ids = Array.isArray(req.body?.companies) ? req.body.companies : [];
+  const companies = await Company.find({ _id: { $in: ids.map((id) => toObjectId(id, "company id")) } })
+    .select("_id company_name")
+    .lean();
+  return res.status(200).json(companies);
+});
 
-
-const deleteCompany = async (req, res, next) => {
-    let company;
-    const id = req.params.id;
-
-    try {
-        company = await Company.findByIdAndRemove(id)
-        return res.status(200).json(company)
-    } catch (err) {
-        console.log(err)
-        return res.status(400).json({ message: "Company not Deleted" })
-    }
-}
-const getCompaniesNames = async (req, res, next) => {
-    const companiesId = req.body.companies;
-  
-    try {
-      const companies = await Company.aggregate([
-        {
-          $match: {
-            _id: { $in: companiesId.map(id => new mongoose.Types.ObjectId(id)) }
-          }
-        },
-        // {
-        //   $project: {
-        //     _id: 0,
-        //     company_name: 1,
-            
-        //   }
-        // }
-      ]);
-  
-      const companyNames = companies.map(company => company.company_name);
-  
-      return res.status(200).json(companies);
-    } catch (error) {
-      console.error(error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  };
-  
-
-exports.AddCompany = AddCompany;
-exports.getCompanies = getCompanies;
-exports.deleteCompany = deleteCompany
-exports.updateCompany = updateCompany;
-exports.getCompanyById = getCompanyById;
-exports.getCompaniesNames =getCompaniesNames;
+module.exports = { AddCompany, getCompanies, getCompanyById, updateCompany, deleteCompany, getCompaniesNames };

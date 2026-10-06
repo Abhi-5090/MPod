@@ -1,86 +1,53 @@
-const Tag = require('../models/tags');
+const Tag = require("../models/tags");
+const { asyncHandler, badRequest, notFound, conflict, toObjectId, escapeRegex } = require("../lib/http");
 
-const AddTag = async (req, res, next) => {
-    const { tag_name, createdAt, updatedAt, added_by, status } = req.body;
-    let tag;
-    try {
-        tag = new Tag({
-            tag_name,
-            createdAt,
-            updatedAt,
-            added_by,
-            status,
-        });
-        await tag.save().then(() => {
-            return res.status(201).json(tag)
-        })
-    } catch (err) {
-        console.log(err);
-        res.status(400).json({
-            message: "Failed to add Tag...!!!"
-        });
-    }
-    if (!tag) {
-        return res.status(500).json({ message: "Tag adding failed" })
-    }
-}
+const cleanName = (v) => {
+  const name = String(v ?? "").trim();
+  if (name.length < 2 || name.length > 50) throw badRequest("Tag name must be 2 to 50 characters.");
+  return name;
+};
 
-const getTags = async (req, res, next) => {
-    let tags;
-    try {
-        tags = await Tag.find({})
-    } catch (err) {
-        console.log(err)
-    }
-    if (!tags) {
-        return res.status(500).json({ message: "No tag found" })
-    }
-    return res.status(200).json({ tags })
-}
+const AddTag = asyncHandler(async (req, res) => {
+  const tag_name = cleanName(req.body?.tag_name);
+  if (await Tag.exists({ tag_name: new RegExp(`^${escapeRegex(tag_name)}$`, "i") })) {
+    throw conflict("A tag with this name already exists.");
+  }
+  const now = new Date().toISOString();
+  const tag = await Tag.create({
+    tag_name,
+    createdAt: now,
+    updatedAt: now,
+    added_by: String(req.auth.user.roll_no || "admin").slice(0, 20),
+    status: Number(req.body?.status) === 0 ? 0 : 1,
+  });
+  return res.status(201).json(tag);
+});
 
-const getTagById = async (req, res, next) => {
-    const id = req.params.id;
-    let tag;
-    try {
-        tag = await Tag.findById(id);
-        return res.status(200).json(tag)
-    } catch (err) {
-        console.log(err)
-    }
-}
+const getTags = asyncHandler(async (req, res) => {
+  const tags = await Tag.find({}).sort({ tag_name: 1 }).lean();
+  return res.status(200).json({ tags });
+});
 
-const updateTag = async (req, res, next) => {
+const getTagById = asyncHandler(async (req, res) => {
+  const tag = await Tag.findById(toObjectId(req.params.id, "tag id")).lean();
+  if (!tag) throw notFound("Tag not found.");
+  return res.status(200).json(tag);
+});
 
-    const id = req.params.id;
-    let { tag_name, createdAt, updatedAt, added_by, status } = req.body;
-    let tag;
-    try {
-        tag = await Tag.findByIdAndUpdate(id, { tag_name, createdAt, updatedAt, added_by, status });
-        tag = await tag.save()
-        return res.status(200).json({ message: "Tag updated successfully" })
-    } catch (err) {
-        console.log(err)
-        return res.status(400).json({ message: "Tag not updated" })
+const updateTag = asyncHandler(async (req, res) => {
+  const id = toObjectId(req.params.id, "tag id");
+  const set = { updatedAt: new Date().toISOString() };
+  if (req.body?.tag_name !== undefined) set.tag_name = cleanName(req.body.tag_name);
+  if (req.body?.status !== undefined && req.body.status !== "") set.status = Number(req.body.status) === 0 ? 0 : 1;
+  const tag = await Tag.findByIdAndUpdate(id, { $set: set }, { new: true, runValidators: true });
+  if (!tag) throw notFound("Tag not found.");
+  return res.status(200).json({ message: "Tag updated successfully" });
+});
 
-    }
-}
-const deleteTag = async (req, res, next) => {
-    const id = req.params.id;
+const deleteTag = asyncHandler(async (req, res) => {
+  const tag = await Tag.findByIdAndDelete(toObjectId(req.params.id, "tag id"));
+  if (!tag) throw notFound("Tag not found.");
+  return res.status(200).json({ message: "Tag Deleted" });
+});
 
-    try {
-        await Tag.findByIdAndRemove(id)
-        return res.status(200).json({ message: "Tag Deleted" })
-
-    } catch (err) {
-        console.log(err)
-        return res.status(400).json({ message: "Tag not Deleted" })
-    }
-}
-
-
-exports.AddTag = AddTag;
-exports.getTags = getTags;
-exports.deleteTag = deleteTag;
-exports.updateTag = updateTag;
-exports.getTagById = getTagById;
-
+module.exports = { AddTag, getTags, getTagById, updateTag, deleteTag };

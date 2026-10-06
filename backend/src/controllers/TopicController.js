@@ -2,38 +2,33 @@ const Topic = require("../models/topic");
 const Module = require("../models/module");
 const mongoose = require('mongoose');
 const xlsx = require('xlsx');
+const { asyncHandler } = require("../lib/http");
 
-const addTopic = async (req, res, next) => {
-  try {
-    const { topic_name, module, technology } = req.body;
-    const workbook = xlsx.readFile(req.file.path);
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-
-    const topics = xlsx.utils.sheet_to_json(sheet, { header: 'A' }).map((row) => Object.values(row)[0].toString());
-
-    const savedTopics = [];
-    for (const ele of topics) {
-      console.log("this is topic"+ele)
-      const topic = new Topic({
-        technology: technology,
-        module: module,
-        topic_name: ele,
-        added_by: "test"
-      });
-      const savedTopic = await topic.save();
-      savedTopics.push(savedTopic);
-    }
-    console.log("these are saved topics"+savedTopics)
-    if (savedTopics.length > 0) {
-      return res.status(200).json(savedTopics);
-    } else {
-      return res.status(500).json({ message: "Failed to save topics." });
-    }
-  } catch (error) {
-    console.error('Error processing file:', error);
-    return res.status(500).json({ message: "Internal server error." });
+const addTopic = async (req, res) => {
+  const { module, technology } = req.body || {};
+  if (!req.file) return res.status(400).json({ message: "Upload an Excel file with one topic per row." });
+  if (!mongoose.Types.ObjectId.isValid(String(module)) || !mongoose.Types.ObjectId.isValid(String(technology))) {
+    return res.status(400).json({ message: "Select a technology and module." });
   }
+  if (!(await Module.exists({ _id: module, technology }))) {
+    return res.status(400).json({ message: "The module does not belong to the selected technology." });
+  }
+  let wb;
+  try {
+    wb = xlsx.readFile(req.file.path);
+  } catch (_) {
+    return res.status(400).json({ message: "Could not read the file." });
+  }
+  const rows = xlsx.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: "A" });
+  const names = rows
+    .map((row) => String(Object.values(row)[0] ?? "").trim().slice(0, 300))
+    .filter(Boolean);
+  if (!names.length) return res.status(400).json({ message: "No topics found in the file." });
+  if (names.length > 2000) return res.status(400).json({ message: "A file can have at most 2000 topics." });
+  const saved = await Topic.insertMany(
+    names.map((topic_name) => ({ technology, module, topic_name, added_by: req.auth.user.roll_no }))
+  );
+  return res.status(200).json(saved);
 };
 const getTopics = async (req, res, next) => {
   try {
@@ -105,18 +100,17 @@ const updateTopic = async (req, res, next) => {
     if (!topic) {
       return res.status(404).json({ message: "Topic not found" });
     }
-    if (topic_name != 'undefined') {
-      topic.topic_name = topic_name
-    }
-    if (module != 'undefined') {
+    const given = (v) => v !== undefined && v !== "undefined" && v !== "";
+    if (given(topic_name)) topic.topic_name = String(topic_name).trim().slice(0, 300);
+    if (given(module)) {
+      if (!mongoose.Types.ObjectId.isValid(String(module))) return res.status(400).json({ message: "Invalid module" });
       topic.module = module;
     }
-    if (technology != 'undefined') {
+    if (given(technology)) {
+      if (!mongoose.Types.ObjectId.isValid(String(technology))) return res.status(400).json({ message: "Invalid technology" });
       topic.technology = technology;
     }
-    if (status != 'undefined') {
-      topic.status = status;
-    }
+    if (given(status)) topic.status = Number(status) === 0 ? 0 : 1;
 
 
     await topic.save();
@@ -161,7 +155,7 @@ const getTopicsByModule = async (req, res, next) => {
       res.status(500).json({ message: "Internal server error" });
     }
   }else{
-    res.status(200).json({message:"some thing went wrong"})
+    res.status(400).json({ message: "Invalid module id" })
   }
   
 }
@@ -188,88 +182,12 @@ const getTopicsByMultiModules = async (req, res, next) => {
 };
 
 
-const topicsTotalReport = async (req, res, next) => {
-  const technology = req.body.technology;
-  
-  try {
-    const result = await Topic.aggregate([
-      {
-        $match: {
-          technology: new mongoose.Types.ObjectId(technology),
-        },
-      },
-      {
-        $lookup: {
-          from: "technologies",
-          localField: "technology",
-          foreignField: "_id",
-          as: "technologyInfo",
-        },
-      },
-      {
-        $unwind: "$technologyInfo",
-      },
-      {
-        $lookup: {
-          from: "courses", // Assuming the collection name for courses is 'courses'
-          localField: "technologyInfo.course",
-          foreignField: "_id",
-          as: "courseInfo",
-        },
-      },
-      {
-        $unwind: "$courseInfo",
-      },
-      {
-        $lookup: {
-          from: "modules",
-          localField: "module",
-          foreignField: "_id",
-          as: "moduleInfo",
-        },
-      },
-      {
-        $unwind: "$moduleInfo",
-      },
-      {
-        $group: {
-          _id: {
-            course_name: "$courseInfo.course_name", // Assuming `course_name` field in courses collection
-            technology_name: "$technologyInfo.technology_name",
-            module_name: "$moduleInfo.module_name",
-            topic_name: "$topic_name",
-          },
-        },
-      },
-      {
-        $project: {
-          _id: 0,
-          course_name: "$_id.course_name",
-          technology_name: "$_id.technology_name",
-          module_name: "$_id.module_name",
-          topic_name: "$_id.topic_name",
-        },
-      },
-      {
-        $sort:{
-          module_name:1
-        }
-      }
-    ]);
-
-    return res.status(200).json(result);
-  } catch (error) {
-    return res.status(500).json({ message: "Internal server error" });
-  }
-};
 module.exports = {
-  addTopic,
-  getTopics,
-  getTopicById,
-  updateTopic,
-  deleteTopic,
-  getTopicsByModule,
-  getTopicsByMultiModules,
-  topicsTotalReport
-
+  addTopic: asyncHandler(addTopic),
+  getTopics: asyncHandler(getTopics),
+  getTopicById: asyncHandler(getTopicById),
+  updateTopic: asyncHandler(updateTopic),
+  deleteTopic: asyncHandler(deleteTopic),
+  getTopicsByModule: asyncHandler(getTopicsByModule),
+  getTopicsByMultiModules: asyncHandler(getTopicsByMultiModules),
 };

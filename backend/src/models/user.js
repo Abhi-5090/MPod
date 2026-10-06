@@ -6,13 +6,14 @@ const UserSchema = mongoose.Schema({
   },
   roll_no: {
     type: String,
-    index:true,
+    index: true,
   },
   mobile: {
     type: Number,
   },
   password: {
     type: String,
+    select: false,
   },
   email: {
     type: String,
@@ -22,8 +23,8 @@ const UserSchema = mongoose.Schema({
   gender: {
     type: String,
   },
-  loginStatus:{
-    type:String,
+  loginStatus: {
+    type: String,
   },
   college: {
     type: String,
@@ -35,7 +36,7 @@ const UserSchema = mongoose.Schema({
   },
   passout_year: {
     type: Number,
-    index:true,
+    index: true,
   },
   role: {
     type: String
@@ -47,26 +48,48 @@ const UserSchema = mongoose.Schema({
     type: Number,
     default: 1,
   },
-  sessionToken: {
-    type: String
-  },
   tenant_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'tenant'
+    ref: 'tenant',
+    index: true,
   },
-  otp: {
-    type: Number,
-  },
+
+  // Session ids embedded in the JWTs. Rotated on login, cleared on logout.
+  session_sid: { type: String, select: false },
+  session_expires_at: { type: Date, select: false },
+  admin_session_sid: { type: String, select: false },
+
+  // Legacy field from the old token-in-DB scheme; cleared on next login.
+  sessionToken: { type: String, select: false },
+
+  // Password reset OTP (stored hashed, short-lived, attempt-limited).
+  otp: { type: Number, select: false }, // legacy plaintext OTP, always cleared
+  otp_hash: { type: String, select: false },
+  otp_expires_at: { type: Date, select: false },
+  otp_attempts: { type: Number, default: 0, select: false },
+  otp_last_sent_at: { type: Date, select: false },
+
+  // Login brute-force protection.
+  login_failures: { type: Number, default: 0, select: false },
+  lock_until: { type: Date, select: false },
+
   created_at: {
     type: Date,
-    default: Date.now()
+    default: Date.now
   },
   updated_at: {
     type: Date,
-    default: Date.now()
+    default: Date.now
   },
 }, {
   collection: 'users'
 });
+
+// Fields that must never be sent to a client.
+UserSchema.statics.SECRET_FIELDS = [
+  "password", "session_sid", "session_expires_at", "admin_session_sid", "sessionToken",
+  "otp", "otp_hash", "otp_expires_at", "otp_attempts", "otp_last_sent_at",
+  "login_failures", "lock_until",
+];
 
 module.exports = mongoose.model("user", UserSchema);

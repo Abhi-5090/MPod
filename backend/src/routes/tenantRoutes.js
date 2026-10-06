@@ -1,16 +1,20 @@
-const express = require('express');
+const express = require("express");
+const Tenant = require("../controllers/TenantController");
+const Credit = require("../controllers/CreditController");
+const { requireStaff } = require("../middlewares/auth");
+const { CAN } = require("../config/roles");
+
 const Router = express.Router();
+const manage = requireStaff(CAN.manageTenants);
 
-const TenantController = require('../controllers/TenantController')
-//Tenant Routes
+Router.get("/api/get-tenants", manage, Tenant.getTenants);
+Router.post("/api/add-tenant", manage, Tenant.addTenant);
+Router.get("/api/get-tenant/:id", requireStaff(CAN.viewCredits), Tenant.getTenantById); // own college for tenant admins
+Router.put("/api/update-tenant/:id", manage, Tenant.updateTenant);
+Router.delete("/api/delete-tenant/:id", manage, Tenant.deleteTenant);
 
-Router.get('/api/get-tenants',TenantController.getTenants);
-Router.post('/api/add-tenant', TenantController.addTenant);
-Router.get('/api/get-tenant/:id', TenantController.getTenantById);
-Router.put('/api/update-tenant/:id', TenantController.updateTenant);
-Router.delete('/api/delete-tenant/:id', TenantController.deleteTenant);
+// Credit ledger
+Router.post("/api/tenants/:id/credits", requireStaff(CAN.manageCredits), Credit.addCredits);
+Router.get("/api/tenants/:id/credit-transactions", requireStaff(CAN.viewCredits), Credit.listTransactions);
 
 module.exports = Router;
-
-
-

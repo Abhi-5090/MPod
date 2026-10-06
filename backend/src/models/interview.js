@@ -1,5 +1,6 @@
 //FILENAME : Interview.js
 const mongoose = require("mongoose");
+const interviewSessionPlugin = require("./plugins/interviewSession");
 
 const InterviewSchema = mongoose.Schema({
   platform: {
@@ -66,11 +67,10 @@ const InterviewSchema = mongoose.Schema({
   },
 },
   {
-    timestamps: true
-  },
-  {
+    timestamps: true,
     collection: 'interviews'
   });
 
-// export model user with InterviewSchema
+InterviewSchema.plugin(interviewSessionPlugin);
+
 module.exports = mongoose.model("interview", InterviewSchema);

@@ -7,6 +7,7 @@ const CompanyQuestion = require("../models/companyQuestion");
 const Tenant = require("../models/tenant");
 
 const mongoose = require('mongoose');
+const { asyncHandler } = require("../lib/http");
 
 const userStats = async (req, res, next) => {
   const tenant = req.params.tid;
@@ -76,7 +77,7 @@ const getInterviewStats = async (req, res) => {
     return res.status(200).json({ technologyInterviews: technologyTotal, codingInterviews: codingTotal, companyInterviews: companyTotal });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Internal server error", error: error.message });
+    return res.status(500).json({ message: "Internal server error", ...(process.env.NODE_ENV === "production" ? {} : { error: error.message }) });
   }
 };
 const getAssignedInterviewStats = async (req, res) => {
@@ -113,7 +114,7 @@ const getAssignedInterviewStats = async (req, res) => {
     return res.status(200).json({ technologyInterviews: technologyTotal, codingInterviews: codingTotal, companyInterviews: companyTotal });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Internal server error", error: error.message });
+    return res.status(500).json({ message: "Internal server error", ...(process.env.NODE_ENV === "production" ? {} : { error: error.message }) });
   }
 };
 const getPlatformStats = async (req, res, next) => {
@@ -168,7 +169,7 @@ const getPlatformStats = async (req, res, next) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Internal server error", error: error.message });
+    return res.status(500).json({ message: "Internal server error", ...(process.env.NODE_ENV === "production" ? {} : { error: error.message }) });
   }
 };
 const getCodingQuestionsCount = async (req, res, next) => {
@@ -279,7 +280,7 @@ const getYesterdayAssignedInterviewStats = async (req, res) => {
     console.error(error);
     return res.status(500).json({
       message: "Internal server error",
-      error: error.message
+      ...(process.env.NODE_ENV === "production" ? {} : { error: error.message })
     });
   }
 };
@@ -345,7 +346,7 @@ const getYesterdayAttemptedInterviewStats = async (req, res) => {
     console.error(error);
     return res.status(500).json({
       message: "Internal server error",
-      error: error.message
+      ...(process.env.NODE_ENV === "production" ? {} : { error: error.message })
     });
   }
 };
@@ -420,7 +421,7 @@ const getYesterdayTechStats = async (req, res) => {
     console.error(error);
     return res.status(500).json({
       message: "Internal server error",
-      error: error.message,
+      ...(process.env.NODE_ENV === "production" ? {} : { error: error.message }),
     });
   }
 };
@@ -482,7 +483,7 @@ const getOverAllYesterdayAssignedInterviewStats = async (req, res) => {
     console.error(error);
     return res.status(500).json({
       message: "Internal server error",
-      error: error.message
+      ...(process.env.NODE_ENV === "production" ? {} : { error: error.message })
     });
   }
 };
@@ -558,7 +559,7 @@ const getYesterdayAttemptedTechStats = async (req, res) => {
     console.error(error);
     return res.status(500).json({
       message: "Internal server error",
-      error: error.message,
+      ...(process.env.NODE_ENV === "production" ? {} : { error: error.message }),
     });
   }
 };
@@ -659,7 +660,7 @@ const getAllTenantsYesterdayAssignedStats = async (req, res, next) => {
     console.error("Error fetching stats:", error);
     return res.status(500).json({
       message: "Internal server error",
-      error: error.message,
+      ...(process.env.NODE_ENV === "production" ? {} : { error: error.message }),
     });
   }
 };
@@ -766,66 +767,8 @@ const getOverAllYesterdayAttemptedInterviewStats = async (req, res) => {
     console.error("Error fetching attempted stats:", error);
     return res.status(500).json({
       message: "Internal server error",
-      error: error.message,
+      ...(process.env.NODE_ENV === "production" ? {} : { error: error.message }),
     });
-  }
-};
-const getHourlyInterviewStats = async (req, res) => {
-  try {
-    const tenant_id = req.params.id; // tenant ID from URL
-
-    const result = await Interview.aggregate([
-      {
-        $match: {
-          tenant_id: new mongoose.Types.ObjectId(tenant_id),
-        },
-      },
-      {
-        // Convert start_date_time to IST hour
-        $addFields: {
-          istHour: {
-            $hour: {
-              date: { $add: ["$start_date_time", 5.5 * 60 * 60000] }, // UTC -> IST
-            },
-          },
-        },
-      },
-      {
-        $group: {
-          _id: "$istHour",
-          count: { $sum: 1 },
-        },
-      },
-      {
-        $sort: { _id: 1 },
-      },
-      {
-        $project: {
-          _id: 0,
-          hourRange: {
-            $concat: [
-              { $toString: "$_id" },
-              "-",
-              {
-                $toString: {
-                  $mod: [{ $add: ["$_id", 1] }, 24],
-                },
-              },
-            ],
-          },
-          count: 1,
-        },
-      },
-    ]);
-
-    return res.status(200).json({
-      success: true,
-      tenant_id,
-      hourlyDistribution: result,
-    });
-  } catch (error) {
-    console.error("Error fetching hourly interview stats:", error);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 };
 const overallStats = async (req, res) => {
@@ -1094,117 +1037,22 @@ const getDaywiseStats = async (req, res, next) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 };
-const calculateInterviewStats = (interviews) => {
-  const now = new Date();
-
-  let attempted = 0;
-  let accuracySum = 0;
-  let assigned = 0;
-  let expired = 0;
-  let upcoming = 0;
-
-  let lastExpiredDate = null;
-
-  interviews.forEach((item) => {
-    const startTime = new Date(item.start_date_time);
-
-    if (item.status === 0) {
-      // Attempted
-      attempted++;
-
-      if (item.question_details?.length > 0) {
-        const acc = item.question_details.reduce((sum, q) => {
-          
-          // accuracy stored as string → convert safely
-          let a = q.accuracy;
-          if (typeof a === "string") {
-            a = a.replace("%", "").trim();     // remove % if exists
-            a = parseFloat(a);                 // convert to number
-          }
-          if (!a || isNaN(a)) a = 0;            // fallback
-
-          return sum + a;
-        }, 0);
-
-        const avg = acc / item.question_details.length;
-        accuracySum += avg;
-      }
-    } else {
-      // Assigned (status = 1)
-      assigned++;
-
-      if (startTime < now) {
-        expired++;
-
-        // Track the latest expired date
-        if (!lastExpiredDate || startTime > lastExpiredDate) {
-          lastExpiredDate = startTime;
-        }
-      } else {
-        upcoming++;
-      }
-    }
-  });
-
-  return {
-    attempted: {
-      count: attempted,
-      accuracy: attempted > 0 ? Math.round(accuracySum / attempted) : 0,
-    },
-    assigned: { count: assigned },
-    expired: { count: expired },
-    upcoming: { count: upcoming },
-    last_expired_date: lastExpiredDate,
-  };
-};
 // MAIN CONTROLLER
-const getAllInterviewStats = async (req, res, next) => {
-  try {
-    const { roll_no } = req.params;
-
-    const [techInterviews, codingInterviews, companyInterviews] =
-      await Promise.all([
-        Interview.find({ roll_no }),
-        CodingInterview.find({ roll_no }),
-        CompanyInterview.find({ roll_no }),
-      ]);
-
-    const technologyStats = calculateInterviewStats(techInterviews);
-    const codingStats = calculateInterviewStats(codingInterviews);
-    const companyStats = calculateInterviewStats(companyInterviews);
-
-    return res.status(200).json({
-      technology: technologyStats,
-      coding: codingStats,
-      company: companyStats,
-    });
-
-  } catch (err) {
-    console.error(err);
-    return res
-      .status(500)
-      .json({ message: "Something went wrong", error: err.message });
-  }
-};
-
-
 module.exports = {
-  userStats,
-  getInterviewStats,
-  getAssignedInterviewStats,
-  getPlatformStats,
-  getCodingQuestionsCount,
-  getCompanyQuestionsCount,
-  getYesterdayAssignedInterviewStats,
-  getOverAllYesterdayAssignedInterviewStats,
-  getYesterdayAttemptedInterviewStats,
-  getOverAllYesterdayAttemptedInterviewStats,
-  getYesterdayTechStats,
-  getYesterdayAttemptedTechStats,
-  getAllTenantsYesterdayAssignedStats,
-  getHourlyInterviewStats,
-  overallStats,
-  currentStats,
-  getDaywiseStats,
-  getAllInterviewStats
-}
+  userStats: asyncHandler(userStats),
+  getInterviewStats: asyncHandler(getInterviewStats),
+  getAssignedInterviewStats: asyncHandler(getAssignedInterviewStats),
+  getPlatformStats: asyncHandler(getPlatformStats),
+  getCodingQuestionsCount: asyncHandler(getCodingQuestionsCount),
+  getCompanyQuestionsCount: asyncHandler(getCompanyQuestionsCount),
+  getYesterdayAssignedInterviewStats: asyncHandler(getYesterdayAssignedInterviewStats),
+  getOverAllYesterdayAssignedInterviewStats: asyncHandler(getOverAllYesterdayAssignedInterviewStats),
+  getYesterdayAttemptedInterviewStats: asyncHandler(getYesterdayAttemptedInterviewStats),
+  getOverAllYesterdayAttemptedInterviewStats: asyncHandler(getOverAllYesterdayAttemptedInterviewStats),
+  getYesterdayTechStats: asyncHandler(getYesterdayTechStats),
+  getYesterdayAttemptedTechStats: asyncHandler(getYesterdayAttemptedTechStats),
+  getAllTenantsYesterdayAssignedStats: asyncHandler(getAllTenantsYesterdayAssignedStats),
+  overallStats: asyncHandler(overallStats),
+  currentStats: asyncHandler(currentStats),
+  getDaywiseStats: asyncHandler(getDaywiseStats),
+};

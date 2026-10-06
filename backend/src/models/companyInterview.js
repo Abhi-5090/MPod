@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const interviewSessionPlugin = require("./plugins/interviewSession");
 
 const CompanyInterviewSchema = mongoose.Schema({
   platform: {
@@ -65,5 +66,7 @@ const CompanyInterviewSchema = mongoose.Schema({
     timestamps: true,
     collection: 'companyinterviews'
   });
+
+CompanyInterviewSchema.plugin(interviewSessionPlugin);
 
 module.exports = mongoose.model("companyinterview", CompanyInterviewSchema);

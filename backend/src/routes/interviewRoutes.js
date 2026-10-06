@@ -1,26 +1,43 @@
-const express = require('express');
+const express = require("express");
+const Tech = require("../controllers/InterviewController");
+const Company = require("../controllers/CompanyInterviewController");
+const Coding = require("../controllers/CodingInterviewController");
+const upload = require("../middlewares/upload");
+const { requireStaff, authenticate, scopeTenantParam } = require("../middlewares/auth");
+const { CAN } = require("../config/roles");
+
+// Scheduling and managing interviews (staff, scoped to their college) and
+// reports (the student who took it, or staff of the same college).
 const Router = express.Router();
-const multer = require('multer');
-const InterviewController = require('../controllers/InterviewController')
-const upload = multer({ dest: 'uploads/' });
+const staff = requireStaff(CAN.scheduleInterviews);
+const sheet = [upload.cleanupUpload, upload.single("file", "sheet")];
+const reportReader = authenticate({ allow: ["staff", "student"] });
 
+// Technology interviews
+Router.post("/api/add-interviewee-details", staff, Tech.addInterviewDetails);
+Router.post("/api/add-bulk-interviewee-details", staff, ...sheet, Tech.addBulkInterviewDetails);
+Router.get("/api/get-all-interviewee-details/:id", staff, scopeTenantParam("id"), Tech.getAllInterviewDetails);
+Router.get("/api/get-interviewee-details/:id", staff, Tech.getInterviewDetailsById);
+Router.put("/api/edit-interviewee-details/:id", staff, Tech.editInterviewDetails);
+Router.delete("/api/delete-interviewee-details/:id", staff, Tech.deleteInterviewDetails);
+Router.get("/api/get-question-details/:id/:interview_type/:roll_no", reportReader, Tech.getQuestionDetails);
 
-Router.post('/api/get-interviewee-details', InterviewController.getIntervieweeDetails)
-Router.post('/api/add-interviewee-details', InterviewController.addInterviewDetails);
-Router.post('/api/add-bulk-interviewee-details', upload.single('file'), InterviewController.addBulkInterviewDetails);
+// Company interviews
+Router.post("/api/add-company-interview", staff, Company.addInterviewDetails);
+Router.post("/api/bulk-add-company-interviews", staff, ...sheet, Company.bulkAddInterviewDetails);
+Router.get("/api/get-company-interviews/:id", staff, scopeTenantParam("id"), Company.getAllInterviewDetails);
+Router.get("/api/get-company-interview-by-id/:id", staff, Company.getInterviewDetailsById);
+Router.put("/api/update-company-interview/:id", staff, Company.updateCompanyInterview);
+Router.delete("/api/delete-company-interviewee-details/:id", staff, Company.deleteCompanyInterviewDetails);
+Router.post("/api/available-company-questions", staff, Company.availableCompanyQuestions);
 
-Router.get('/api/get-all-interviewee-details/:id', InterviewController.getAllInterviewDetails)
-Router.post('/api/get-accuracy', InterviewController.getAccuracy)
-Router.post('/api/generate-questions', InterviewController.generateQuestions)
-Router.put('/api/edit-interviewee-details/:id', InterviewController.editInterviewDetails)
-Router.get('/api/get-interviewee-details/:id', InterviewController.getInterviewDetailsById)
-Router.get('/api/get-question-details/:id/:interview_type/:roll_no', InterviewController.getQuestionDetails)
-Router.post('/api/submit-emotions', InterviewController.submitEmotions)
-
-Router.post('/api/get-emotions', InterviewController.getEmotionsData)
-Router.delete('/api/delete-interviewee-details/:id', InterviewController.deleteInterviewDetails)
-Router.post('/api/get-accuracy-temp', InterviewController.getAccuracyTemporary)
-Router.post('/api/get-technology-wise-date-range-interviews-attempted-count', InterviewController.getTechnologyWiseMpodInterviewsSubmissionsStatisticsFromDateAndToDate);
-Router.post('/api/add-interviewee-details-replica', InterviewController.addInterviewDetailsReplica);
+// Coding interviews
+Router.post("/api/add-coding-interview", staff, Coding.addInterviewDetails);
+Router.post("/api/add-bulk-coding-interview", staff, ...sheet, Coding.addBulkInterviewDetails);
+Router.get("/api/get-all-coding-interview-details/:id", staff, scopeTenantParam("id"), Coding.getAllCodingInterviewDetails);
+Router.get("/api/get-coding-interview-details-by-id/:id", staff, Coding.getInterviewDetailsById);
+Router.put("/api/update-coding-interview/:id", staff, Coding.updateInterviewDetails);
+Router.delete("/api/delete-coding-interview/:id", staff, Coding.deleteCodingInterviewDetails);
+Router.get("/api/get-coding-report-details/:id/:interview_type/:roll_no", reportReader, Coding.getCodingReportDetails);
 
 module.exports = Router;

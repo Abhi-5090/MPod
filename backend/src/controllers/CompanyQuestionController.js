@@ -1,223 +1,105 @@
+const xlsx = require("xlsx");
 const CompanyQuestion = require("../models/companyQuestion");
-const Module = require("../models/module");
-const mongoose = require('mongoose');
-const xlsx = require('xlsx');
+const Company = require("../models/companies");
+const Tag = require("../models/tags");
+const { asyncHandler, badRequest, notFound, toObjectId } = require("../lib/http");
 
-const addCompanyQuestion = async (req, res, next) => {
-  try {
-    const { company, type, round, year, tag } = req.body;
-    const workbook = xlsx.readFile(req.file.path);
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-
-    const questions = xlsx.utils.sheet_to_json(sheet, { header: 'A' }).map((row) => Object.values(row)[0].toString());
-
-    const savedCompanyQuestions = [];
-    for (const ele of questions) {
-      const companyQuestion = new CompanyQuestion({
-        company: company,
-        type: type,
-        round: round,
-        year: year,
-        tag: tag,
-        question: ele,
-        added_by: "test"
-      });
-      const savedCompanyQuestion = await companyQuestion.save();
-      savedCompanyQuestions.push(savedCompanyQuestion);
-    }
-    if (savedCompanyQuestions.length > 0) {
-      return res.status(200).json(savedCompanyQuestions);
-    } else {
-      return res.status(500).json({ message: "Failed to save questions." });
-    }
-  } catch (error) {
-    console.error('Error processing file:', error);
-    return res.status(500).json({ message: "Internal server error." });
-  }
-};
-const getCompanyQuestions = async (req, res, next) => {
-  try {
-    const questions = await CompanyQuestion.aggregate([
-      {
-        $lookup: {
-          from: "companies",
-          localField: "company",
-          foreignField: "_id",
-          as: "companyInfo"
-        }
-      },
-      {
-        $lookup: {
-          from: "tags",
-          localField: "tag",
-          foreignField: "_id",
-          as: "tagInfo"
-        }
-      },
-      {
-        $addFields: {
-          company_name: { $arrayElemAt: ["$companyInfo.company_name", 0] },
-          tag_name: { $arrayElemAt: ["$tagInfo.tag_name", 0] }
-        }
-      },
-      {
-        $project: {
-          companyInfo: 0
-        }
-      }
-    ])
-    if (questions.length > 0) {
-      return res.status(200).json(questions);
-    } else {
-      return res.status(404).json({ message: "Questions not found" });
-    }
-  } catch (error) {
-    console.log(error)
-    return res.status(500).json({ message: "Internal server error." });
-  }
+const str = (v, field, max = 100) => {
+  const s = String(v ?? "").trim();
+  if (!s) throw badRequest(`${field} is required.`);
+  if (s.length > max) throw badRequest(`${field} is too long.`);
+  return s;
 };
 
-const getCompanyQuestionsByTag = async (req, res) => {
+/** POST /add-company-question (multipart: file + company, type, round, year, tag). One question per row, first column. */
+const addCompanyQuestion = asyncHandler(async (req, res) => {
+  const b = req.body || {};
+  if (!req.file) throw badRequest("Upload an Excel file with one question per row.");
+  const company = toObjectId(b.company, "company");
+  if (!(await Company.exists({ _id: company }))) throw badRequest("Company not found.");
+  const tag = b.tag ? toObjectId(b.tag, "tag") : undefined;
+  if (tag && !(await Tag.exists({ _id: tag }))) throw badRequest("Tag not found.");
+  const base = {
+    company,
+    type: str(b.type, "type"),
+    round: str(b.round, "round"),
+    year: b.year ? str(b.year, "year", 10) : undefined,
+    tag,
+    added_by: req.auth.user.roll_no,
+    status: 1,
+  };
+  let wb;
   try {
-    const { tag_id } = req.params;
-    const tag_obj_id = new mongoose.Types.ObjectId(tag_id);
-     const questions = await CompanyQuestion.aggregate([
-      {
-        $match: {
-          tag: tag_obj_id
-        }
-      },
-      {
-        $lookup: {
-          from: "companies",
-          localField: "company",
-          foreignField: "_id",
-          as: "companyInfo"
-        }
-      },
-      {
-        $lookup: {
-          from: "tags",
-          localField: "tag",
-          foreignField: "_id",
-          as: "tagInfo"
-        }
-      },
-      {
-        $addFields: {
-          company_name: { $arrayElemAt: ["$companyInfo.company_name", 0] },
-          tag_name: { $arrayElemAt: ["$tagInfo.tag_name", 0] }
-        }
-      },
-      {
-        $project: {
-          companyInfo: 0
-        }
-      }
-    ])
-    if (questions.length > 0) {
-      return res.status(200).json(questions);
-    } else {
-      return res.status(404).json({ message: "Questions not found" });
-    }
-  } catch (error) {
-    console.log(error)
-    return res.status(500).json({ message: "Internal server error." });
+    wb = xlsx.readFile(req.file.path);
+  } catch (_) {
+    throw badRequest("Could not read the file.");
   }
-}
+  const rows = xlsx.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: "A" });
+  const questions = rows.map((row) => String(Object.values(row)[0] ?? "").trim().slice(0, 2000)).filter(Boolean);
+  if (!questions.length) throw badRequest("No questions found in the file.");
+  if (questions.length > 5000) throw badRequest("A file can have at most 5000 questions.");
+  const saved = await CompanyQuestion.insertMany(questions.map((question) => ({ ...base, question })));
+  return res.status(200).json(saved);
+});
 
-const getCompanyQuestionById = async (req, res, next) => {
-  const questionId = req.params.id;
-  try {
-    const question = await CompanyQuestion.aggregate([
-      {
-        $match: {
-          _id: new mongoose.Types.ObjectId(questionId)
-        }
-      }
-    ]);
+const listPipeline = (match) => [
+  ...(match ? [{ $match: match }] : []),
+  { $lookup: { from: "companies", localField: "company", foreignField: "_id", as: "companyInfo" } },
+  { $lookup: { from: "tags", localField: "tag", foreignField: "_id", as: "tagInfo" } },
+  {
+    $addFields: {
+      company_name: { $arrayElemAt: ["$companyInfo.company_name", 0] },
+      tag_name: { $arrayElemAt: ["$tagInfo.tag_name", 0] },
+    },
+  },
+  { $project: { companyInfo: 0, tagInfo: 0 } },
+  { $sort: { createdAt: -1 } },
+];
 
-    if (!question || question.length === 0) {
-      return res.status(404).json({ message: "Topic not found" });
-    }
-    res.status(200).json(question[0]);
-  } catch (error) {
-    console.error("Error fetching topic:", error);
-    res.status(500).json({ message: "Internal server error" });
+const getCompanyQuestions = asyncHandler(async (req, res) => {
+  const questions = await CompanyQuestion.aggregate(listPipeline());
+  if (!questions.length) return res.status(404).json({ message: "Questions not found" });
+  return res.status(200).json(questions);
+});
+
+const getCompanyQuestionsByTag = asyncHandler(async (req, res) => {
+  const tag = toObjectId(req.params.tag_id, "tag id");
+  const questions = await CompanyQuestion.aggregate(listPipeline({ tag }));
+  if (!questions.length) return res.status(404).json({ message: "Questions not found" });
+  return res.status(200).json(questions);
+});
+
+const getCompanyQuestionById = asyncHandler(async (req, res) => {
+  const q = await CompanyQuestion.findById(toObjectId(req.params.id, "question id")).lean();
+  if (!q) throw notFound("Question not found");
+  return res.status(200).json(q);
+});
+
+const updateCompanyQuestion = asyncHandler(async (req, res) => {
+  const id = toObjectId(req.params.id, "question id");
+  const b = req.body || {};
+  const given = (v) => v !== undefined && v !== "undefined" && v !== null;
+  const set = {};
+  if (given(b.company)) {
+    set.company = toObjectId(b.company, "company");
+    if (!(await Company.exists({ _id: set.company }))) throw badRequest("Company not found.");
   }
-};
-const updateCompanyQuestion = async (req, res, next) => {
-  const questionId = req.params.id;
-  const { company, type, round, year, tag, question } = req.body;
-  try {
-    const comapnyQuestion = await CompanyQuestion.findById(questionId);
-    if (!comapnyQuestion) {
-      return res.status(404).json({ message: "Question not found" });
-    }
-    if (company != 'undefined') {
-      comapnyQuestion.company = company
-    }
-    if (type != 'undefined') {
-      comapnyQuestion.type = type;
-    }
-    if (round != 'undefined') {
-      comapnyQuestion.round = round;
-    }
-    if (year != 'undefined') {
-      comapnyQuestion.year = year;
-    }
-    if (tag != 'undefined') {
-      comapnyQuestion.tag = tag;
-    }
-    if (question != 'undefined') {
-      comapnyQuestion.question = question;
-    }
-    // if (status != 'undefined') {
-    //   question.status = status;
-    // }
+  if (given(b.type)) set.type = str(b.type, "type");
+  if (given(b.round)) set.round = str(b.round, "round");
+  if (given(b.year)) set.year = String(b.year).trim().slice(0, 10);
+  if (given(b.tag) && b.tag !== "") set.tag = toObjectId(b.tag, "tag");
+  if (given(b.question)) set.question = str(b.question, "question", 2000);
+  if (given(b.status) && b.status !== "") set.status = Number(b.status) === 0 ? 0 : 1;
+  const q = await CompanyQuestion.findByIdAndUpdate(id, { $set: set }, { new: true, runValidators: true });
+  if (!q) throw notFound("Question not found");
+  return res.status(200).json({ message: "Question updated successfully", comapnyQuestion: q });
+});
 
-
-    await comapnyQuestion.save();
-
-    return res.status(200).json({ message: "Question updated successfully", comapnyQuestion });
-  } catch (error) {
-    console.error("Error updating Question:", error);
-    return res.status(500).json({ message: "Internal server error" });
-  }
-}
-const deleteCompanyQuestion = async (req, res, next) => {
-  const topicId = req.params.id;
-
-  try {
-    const deleteTopic = await Topic.findByIdAndDelete(topicId);
-
-    if (!deleteTopic) {
-      return res.status(404).json({ message: "Topic not found" });
-    }
-
-    return res.status(200).json({ message: "Topic deleted successfully" });
-  } catch (error) {
-    console.error("Error deleting Topic:", error);
-    return res.status(500).json({ message: "Internal server error" });
-  }
-}
-const QuestionsCount = async (req, res, next) => {
-  const { company, type, round } = req.body;
-  try {
-    const result = await CompanyQuestion.aggregate([
-      {
-        $match: {
-          company: new mongoose.Types.ObjectId(company),
-          type: type,
-          round: round
-        }
-      }
-    ])
-  } catch (error) {
-    return req.status(500).json({ message: "Internal server error" })
-  }
-}
+const deleteCompanyQuestion = asyncHandler(async (req, res) => {
+  const q = await CompanyQuestion.findByIdAndDelete(toObjectId(req.params.id, "question id"));
+  if (!q) throw notFound("Question not found");
+  return res.status(200).json({ message: "Question deleted successfully" });
+});
 
 module.exports = {
   addCompanyQuestion,
@@ -225,6 +107,5 @@ module.exports = {
   getCompanyQuestionById,
   updateCompanyQuestion,
   deleteCompanyQuestion,
-  QuestionsCount,
-  getCompanyQuestionsByTag
+  getCompanyQuestionsByTag,
 };

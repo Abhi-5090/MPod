@@ -1,10 +1,18 @@
 const Technology = require("../models/technology");
 const mongoose = require('mongoose');
+const fs = require("fs");
+const path = require("path");
+const Module = require("../models/module");
 const { handleFileUpload } = require('../utils/fileUploadUtil');
+const { TECH_ICONS_DIR } = require("../config/paths");
+const { asyncHandler } = require("../lib/http");
 
 const addTechnology = async (req, res, next) => {
   try {
     const { technology_name, technology_category } = req.body;
+    if (!technology_name || !String(technology_name).trim() || !technology_category) {
+      return res.status(400).json({ message: "Technology name and category are required." });
+    }
 
     const technology = new Technology({
      
@@ -12,7 +20,7 @@ const addTechnology = async (req, res, next) => {
       
       technology_category: technology_category,
       status:1,
-      added_by: "test"
+      added_by: req.auth.user.roll_no
     });
     const savedTechnology = await technology.save();
     if (savedTechnology) {
@@ -77,16 +85,18 @@ const updateTechnology = async (req, res, next) => {
       technology.technology_category = technology_category;
     }
 
-    if (status !== "undefined") {
-      technology.status = parseInt(status, 10);
+    if (status !== undefined && status !== "undefined" && status !== "") {
+      const st = parseInt(status, 10);
+      if (![0, 1].includes(st)) return res.status(400).json({ message: "status must be 0 or 1" });
+      technology.status = st;
     }
 
     if (req.file) {
-      if (technology.technology_icon && fs.existsSync(`./uploads/technology-icons/${technology.technology_icon}`)) {
-        fs.unlinkSync(`./uploads/technology-icons/${technology.technology_icon}`);
-      }
+      const stored = await handleFileUpload(req.file, TECH_ICONS_DIR);
+      const old = technology.technology_icon && path.join(TECH_ICONS_DIR, path.basename(technology.technology_icon));
+      if (old) fs.promises.unlink(old).catch(() => {});
 
-      technology.technology_icon = req.file.filename;
+      technology.technology_icon = stored;
     }
 
     await technology.save();
@@ -102,6 +112,9 @@ const deleteTechnology = async (req, res, next) => {
   const technologyId = req.params.id;
 
   try {
+    if (await Module.exists({ technology: technologyId })) {
+      return res.status(409).json({ message: "Delete this technology's modules first." });
+    }
     const deleteTechnology = await Technology.findByIdAndDelete(technologyId);
 
     if (!deleteTechnology) {
@@ -116,10 +129,9 @@ const deleteTechnology = async (req, res, next) => {
 }
 
 module.exports = {
-  addTechnology,
-  gettechnologies,
-  getTechnologyById,
-  updateTechnology,
-  deleteTechnology,
-
+  addTechnology: asyncHandler(addTechnology),
+  gettechnologies: asyncHandler(gettechnologies),
+  getTechnologyById: asyncHandler(getTechnologyById),
+  updateTechnology: asyncHandler(updateTechnology),
+  deleteTechnology: asyncHandler(deleteTechnology),
 };

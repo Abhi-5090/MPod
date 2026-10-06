@@ -1,21 +1,27 @@
 const Module = require("../models/module");
 const Technology = require("../models/technology")
 const mongoose = require('mongoose');
+const Topic = require("../models/topic");
 const { handleFileUpload } = require('../utils/fileUploadUtil');
+const { MODULE_ICONS_DIR } = require("../config/paths");
+const { asyncHandler } = require("../lib/http");
 
 const addModule = async (req, res, next) => {
   try {
     const { module_name, technology } = req.body;
+    if (!module_name || !String(module_name).trim() || !mongoose.Types.ObjectId.isValid(String(technology))) {
+      return res.status(400).json({ message: "Module name and technology are required." });
+    }
     let module_icon, extension, size;
     if(req.file) {
-      module_icon = await handleFileUpload(req.file, "uploads/module-icons");
+      module_icon = await handleFileUpload(req.file, MODULE_ICONS_DIR);
     }
     
     const module = new Module({
       technology: technology,
       module_name: module_name,
       module_icon: module_icon,
-      added_by: "test"
+      added_by: req.auth.user.roll_no
     });
 
     const savedModule = await module.save();
@@ -84,22 +90,20 @@ const getModuleById = async (req, res, next) => {
 const updateModule = async (req, res, next) => {
   const moduleId = req.params.id;
   const { module_name, technology, status } = req.body;
-  let module_icon = await handleFileUpload(req.file, "uploads/module-icons");
+  let module_icon = await handleFileUpload(req.file, MODULE_ICONS_DIR);
  
   try {
     const module = await Module.findById(moduleId);
     if (!module) {
       return res.status(404).json({ message: "Module not found" });
     }
-    if(module_name != 'undefined') {
-      module.module_name = module_name
-    }
-    if (technology != 'undefined') {
+    const given = (v) => v !== undefined && v !== "undefined" && v !== "";
+    if (given(module_name)) module.module_name = module_name;
+    if (given(technology)) {
+      if (!mongoose.Types.ObjectId.isValid(String(technology))) return res.status(400).json({ message: "Invalid technology" });
       module.technology = technology;
     }
-    if (status != 'undefined') {
-      module.status = status;
-    }
+    if (given(status)) module.status = Number(status) === 0 ? 0 : 1;
     if(module_icon) {
       module.module_icon = module_icon;
     }
@@ -116,6 +120,9 @@ const deleteModule = async (req, res, next) => {
   const moduleId = req.params.id;
 
   try {
+    if (await Topic.exists({ module: moduleId })) {
+      return res.status(409).json({ message: "Delete this module's topics first." });
+    }
     const deleteModule = await Module.findByIdAndDelete(moduleId);
 
     if (!deleteModule) {
@@ -154,8 +161,11 @@ const getModulesByTechnology = async (req, res, next) => {
 }
 
 const getModulesByTechnologies = async (req, res, next) => {
-  let technologies = req.body.technologies;
-  technologies = technologies.map(ele=>new mongoose.Types.ObjectId(ele))
+  let technologies = Array.isArray(req.body.technologies) ? req.body.technologies : [];
+  if (technologies.some((t) => !mongoose.Types.ObjectId.isValid(String(t)))) {
+    return res.status(400).json({ message: "Invalid technology id" });
+  }
+  technologies = technologies.map((ele) => new mongoose.Types.ObjectId(ele));
   try {
     technologies = await Module.aggregate(
       [
@@ -222,18 +232,18 @@ const getModulesByTechnologies = async (req, res, next) => {
     return res.status(200).json(technologies)
 
   } catch (err) {
-    return res.status(500).json(err)
+    console.error(err);
+    return res.status(500).json({ message: "Internal server error" })
   }
 }
 
 
 module.exports = {
-  addModule,
-  getModules,
-  getModuleById,
-  updateModule,
-  deleteModule,
-  getModulesByTechnology,
-  getModulesByTechnologies,
-
+  addModule: asyncHandler(addModule),
+  getModules: asyncHandler(getModules),
+  getModuleById: asyncHandler(getModuleById),
+  updateModule: asyncHandler(updateModule),
+  deleteModule: asyncHandler(deleteModule),
+  getModulesByTechnology: asyncHandler(getModulesByTechnology),
+  getModulesByTechnologies: asyncHandler(getModulesByTechnologies),
 };

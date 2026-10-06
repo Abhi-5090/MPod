@@ -1,38 +1,41 @@
-const express = require('express');
+const express = require("express");
+const Auth = require("../controllers/AuthController");
+const User = require("../controllers/UserController");
+const rl = require("../middlewares/rateLimits");
+const upload = require("../middlewares/upload");
+const { requireStaff, requireStudent } = require("../middlewares/auth");
+const { CAN } = require("../config/roles");
+
 const Router = express.Router();
-const multer = require('multer');
-const unzipper = require('unzipper');
-const path = require('path');
-const fs = require('fs-extra');
-const UserController = require('../controllers/UserController')
-const profileUpload = multer({dest:'uploads/profile-pics'})
-const excelUpload = multer({ dest: 'uploads/' });
-//User Routes
-const authMiddleware = require("../middlewares/authMiddleware");
-const upload = multer({ dest: 'uploads/profile-pics' });
-Router.post('/api/add-user', excelUpload.single('file'), UserController.addUser);
-Router.post('/api/upload-profile-pics', upload.single('profile_pics_zip'), UserController.uploadProfilePics);
 
-Router.get("/api/logout/:roll_no/:slug", authMiddleware, UserController.logout);
-Router.get('/api/get-users/:id',UserController.getUsers);
-Router.post('/api/login',UserController.login);
-Router.post('/api/admin-login',UserController.adminLogin);
+// Authentication (public, rate limited)
+Router.post("/api/login", rl.loginPerIp, rl.login, Auth.login);
+Router.post("/api/admin-login", rl.loginPerIp, rl.login, Auth.adminLogin);
+Router.post("/api/logout", Auth.logout);
+Router.get("/api/logout/:roll_no/:slug", Auth.logout); // legacy form; roll_no is ignored
+Router.post("/api/send-otp", rl.otpSend, Auth.sendOtp);
+Router.post("/api/check-otp", rl.otpVerify, Auth.checkOtp);
+Router.post("/api/reset-password", rl.otpVerify, Auth.resetPassword);
 
-Router.get('/api/get-assigned-interviews/:id',UserController.getAssignedInterviews);
-Router.get('/api/get-currentUser',UserController.getCurrentUser);
-Router.post("/api/get-interview-details-by-id", UserController.getInterviewDetailsById);
-Router.post('/api/update-session-token',UserController.updateSessionToken);
-Router.get('/api/get-past-interviews/:id',UserController.getTraineePastInterviews);
-Router.get('/api/attempted-interviews-count/:id',UserController.attemptedInterviewsCount);
-Router.get('/api/platform-interviews-count/:id',UserController.platformInterviewsCount);
-Router.get('/api/overall-accuracy/:id',UserController.overallAccuracy);
-Router.get('/api/get-admin-current-user',UserController.getAdminCurrentUser);
-Router.get('/api/find-session-token/:id',UserController.findSessionToken);
-Router.post('/api/send-otp',UserController.sendOtp);
-Router.post('/api/check-otp',UserController.checkOtp);
-Router.post('/api/reset-password',UserController.resetPassword);
+// Current user
+Router.get("/api/get-currentUser", requireStudent(), Auth.getCurrentUser);
+Router.get("/api/get-admin-current-user", requireStaff(), Auth.getAdminCurrentUser);
+
+// User management (platform admins and college admins, scoped to their college)
+const manageUsers = requireStaff(CAN.manageUsers);
+Router.post("/api/add-user", manageUsers, upload.cleanupUpload, upload.single("file", "sheet"), User.addUser);
+Router.post("/api/upload-profile-pics", manageUsers, upload.cleanupUpload, upload.single("profile_pics_zip", "zip"), User.uploadProfilePics);
+Router.get("/api/get-users/:id", manageUsers, User.getUsers);
+Router.get("/api/get-user-by-id/:id", manageUsers, User.getUserById);
+Router.put("/api/update-user/:id", manageUsers, User.updateUser);
+Router.delete("/api/delete-user/:id", manageUsers, User.deleteUser);
+
+// Student dashboard (always the logged-in student's own data)
+Router.get("/api/get-assigned-interviews/:id", requireStudent(), User.getAssignedInterviews);
+Router.get("/api/get-past-interviews/:id", requireStudent(), User.getTraineePastInterviews);
+Router.post("/api/get-interview-details-by-id", requireStudent(), User.getInterviewDetailsById);
+Router.get("/api/attempted-interviews-count/:id", requireStudent(), User.attemptedInterviewsCount);
+Router.get("/api/platform-interviews-count/:id", requireStudent(), User.platformInterviewsCount);
+Router.get("/api/overall-accuracy/:id", requireStudent(), User.overallAccuracy);
 
 module.exports = Router;
-
-
-
