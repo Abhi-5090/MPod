@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import RetryEvaluationButton from "../../components/Common/RetryEvaluationButton";
 import { Row, Col, Card, CardBody, CardTitle, Button, Badge, Input } from "reactstrap";
 import { Link } from "react-router-dom";
 import { connect } from "react-redux";
@@ -13,7 +14,7 @@ import { apiUrl, getErrorMessage } from "../../config/api";
 import useTenantSelection, { TenantSelect } from "./useTenantSelection";
 import LoadState from "../../components/Common/LoadState";
 import ConfirmModal from "../../components/Common/ConfirmModal";
-import { deleteResultMessage, studentReportUrl } from "./interviewHelpers";
+import { deleteResultMessage, studentReportUrl, statusColor, canRetryEvaluation } from "./interviewHelpers";
 import "./datatables.scss";
 
 const CodingInterviewsList = (props) => {
@@ -124,7 +125,7 @@ const CodingInterviewsList = (props) => {
       text: "Status",
       sort: true,
       formatter: (cell) => (
-        <Badge color={cell === "Attempted" ? "success" : cell === "Expired" ? "danger" : "warning"} pill>
+        <Badge color={statusColor(cell)} pill>
           {cell}
         </Badge>
       ),
@@ -154,6 +155,9 @@ const CodingInterviewsList = (props) => {
               <Link to={`/edit-coding-interview/${interview._id}`} className="btn btn-primary btn-sm me-2">
                 Edit
               </Link>
+            )}
+            {canRetryEvaluation(interview.interview_status) && (
+              <RetryEvaluationButton interviewId={interview._id} interviewType="coding" title={interview.evaluation_error || ""} />
             )}
             <Button color="danger" size="sm" onClick={() => setSelectedInterviewId(interview._id)}>
               Delete
@@ -225,6 +229,10 @@ const CodingInterviewsList = (props) => {
                     <option value="Upcoming">Upcoming</option>
                     <option value="Attempted">Attempted</option>
                     <option value="Expired">Expired</option>
+                    <option value="In progress">In progress</option>
+                    <option value="Waiting for AI">Waiting for AI</option>
+                    <option value="Evaluating">Evaluating</option>
+                    <option value="Evaluation failed">Evaluation failed</option>
                   </Input>
                 </Col>
               </Row>

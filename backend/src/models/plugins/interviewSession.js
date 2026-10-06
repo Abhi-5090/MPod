@@ -31,6 +31,8 @@ module.exports = function interviewSessionPlugin(schema) {
     },
     evaluation_lease_until: Date,
     evaluation_lease_id: String,
+    evaluation_waiting_for_ai: { type: Boolean, default: false },
+    evaluation_outage_retries: { type: Number, default: 0 },
     evaluation_attempts: { type: Number, default: 0 },
     evaluation_error: String,
     evaluated_at: Date,

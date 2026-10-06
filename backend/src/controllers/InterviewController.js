@@ -4,6 +4,7 @@ const CompanyInterview = require("../models/companyInterview");
 const scheduling = require("../services/scheduling");
 const { loadInterviewForAccess } = require("../services/interviewModels");
 const { asyncHandler } = require("../lib/http");
+const { decorate } = require("../services/interviewStatus");
 const { istDayRange } = require("../lib/time");
 
 // Technology ("ai generated") interviews: admin scheduling, lists and the student report.
@@ -164,7 +165,7 @@ const getAllInterviewDetails = async (req, res) => {
       },
     ]);
 
-    res.status(200).json(InterviewDetails);
+    res.status(200).json(decorate(InterviewDetails));
   } catch (error) {
     if (error.status) return res.status(error.status).json({ message: error.message });
     console.error("Error fetching interview details:", error);

@@ -45,7 +45,20 @@ const parseJson = (raw) => {
 };
 
 async function chatJson({ model, system, user, maxTokens = 1024, temperature = 0.3, requestOptions }) {
-  const res = await getClient().chat.completions.create(
+  const aiStatus = require("./aiStatus");
+  let res;
+  try {
+    res = await callModel(model, system, user, maxTokens, temperature, requestOptions);
+  } catch (err) {
+    aiStatus.recordFailure(err);
+    throw err;
+  }
+  aiStatus.recordSuccess();
+  return parseJson(res.choices?.[0]?.message?.content);
+}
+
+function callModel(model, system, user, maxTokens, temperature, requestOptions) {
+  return getClient().chat.completions.create(
     {
     model,
     messages: [
@@ -58,7 +71,14 @@ async function chatJson({ model, system, user, maxTokens = 1024, temperature = 0
     },
     requestOptions
   );
-  return parseJson(res.choices?.[0]?.message?.content);
+}
+
+/** Minimal request used by the AI health check. */
+async function ping() {
+  await getClient().chat.completions.create(
+    { model: env.models.generation, messages: [{ role: "user", content: "ping" }], max_tokens: 1 },
+    { timeout: 15000, maxRetries: 0 }
+  );
 }
 
 const clampScore = (v) => {
@@ -327,6 +347,7 @@ module.exports = {
   overallAnalysis,
   confidenceLevel,
   mapLimit,
+  ping,
   // exported for tests
   _setClient: (c) => {
     client = c;

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import RetryEvaluationButton from "../../components/Common/RetryEvaluationButton";
 import BootstrapTable from "react-bootstrap-table-next";
 import paginationFactory from "react-bootstrap-table2-paginator";
 import { Button, Badge, Card, CardBody, CardTitle, Row, Col, Input } from "reactstrap";
@@ -16,9 +17,8 @@ import ConfirmModal from "../../components/Common/ConfirmModal";
 import {
   attemptedPercentage,
   deleteResultMessage,
-  getYesterdayDateString,
-  studentReportUrl,
-} from "./interviewHelpers";
+  getTodayDateString,
+  studentReportUrl, statusColor, canRetryEvaluation } from "./interviewHelpers";
 
 const joinList = (value) => (Array.isArray(value) ? value.join(", ") : value || "");
 
@@ -29,7 +29,7 @@ const InterviewsList = (props) => {
   const { tenantId, tenantName } = tenantSelection;
   const [interviewsData, setInterviewsData] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterDate, setFilterDate] = useState(getYesterdayDateString()); // Holds selected date
+  const [filterDate, setFilterDate] = useState(getTodayDateString()); // Holds selected date
   const [statusFilter, setStatusFilter] = useState("All");
   const [technologyFilter, setTechnologyFilter] = useState("All");
   const [loading, setLoading] = useState(true);
@@ -73,17 +73,17 @@ const InterviewsList = (props) => {
   );
 
   useEffect(() => {
-    fetchInterviewsData(filterDate || getYesterdayDateString());
+    fetchInterviewsData(filterDate || getTodayDateString());
     // Only on mount / tenant change; date changes fetch via handleDateChange.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchInterviewsData]);
 
   // When user changes date input, fetch that date from server.
-  // If the date is cleared, yesterday is fetched again.
+  // If the date is cleared, today is fetched again.
   const handleDateChange = (e) => {
     const value = e.target.value;
     setFilterDate(value || "");
-    fetchInterviewsData(value || getYesterdayDateString());
+    fetchInterviewsData(value || getTodayDateString());
   };
 
   const technologyOptions = useMemo(
@@ -147,7 +147,7 @@ const InterviewsList = (props) => {
       dataField: "interview_status",
       text: "Status",
       formatter: (status) => (
-        <Badge color={status === "Attempted" ? "success" : status === "Expired" ? "danger" : "warning"}>
+        <Badge color={statusColor(status)}>
           {status}
         </Badge>
       ),
@@ -177,6 +177,9 @@ const InterviewsList = (props) => {
               <Link to={`/edit-ai-interview/${interview._id}`} className="btn btn-primary btn-sm me-2">
                 Edit
               </Link>
+            )}
+            {canRetryEvaluation(interview.interview_status) && (
+              <RetryEvaluationButton interviewId={interview._id} interviewType="ai generated" title={interview.evaluation_error || ""} />
             )}
             <Button color="danger" size="sm" onClick={() => setSelectedInterviewId(interview._id)}>
               Delete
@@ -327,7 +330,7 @@ const InterviewsList = (props) => {
                     onChange={handleDateChange}
                     placeholder="Filter by Date"
                   />
-                  <small className="text-muted">Initial load shows yesterday's records</small>
+                  <small className="text-muted">Showing today by default</small>
                 </Col>
                 <Col xs="3">
                   <Input
@@ -339,6 +342,10 @@ const InterviewsList = (props) => {
                     <option value="Upcoming">Upcoming</option>
                     <option value="Attempted">Attempted</option>
                     <option value="Expired">Expired</option>
+                    <option value="In progress">In progress</option>
+                    <option value="Waiting for AI">Waiting for AI</option>
+                    <option value="Evaluating">Evaluating</option>
+                    <option value="Evaluation failed">Evaluation failed</option>
                   </Input>
                 </Col>
                 <Col xs="3">
@@ -360,7 +367,7 @@ const InterviewsList = (props) => {
                 error={error}
                 empty={!tenantId || !filteredData.length}
                 emptyText={tenantId ? "No interviews found" : "Select a college"}
-                onRetry={() => fetchInterviewsData(filterDate || getYesterdayDateString())}
+                onRetry={() => fetchInterviewsData(filterDate || getTodayDateString())}
               >
                 <BootstrapTable
                   keyField="_id"

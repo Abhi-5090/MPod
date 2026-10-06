@@ -3,6 +3,7 @@ const Interview = require("../models/codingInterview"); // coding interviews
 const scheduling = require("../services/scheduling");
 const { loadInterviewForAccess } = require("../services/interviewModels");
 const { asyncHandler } = require("../lib/http");
+const { decorate } = require("../services/interviewStatus");
 
 // Coding interviews: admin scheduling, lists and the student coding report.
 // Problems are issued and evaluated by the interview session service.
@@ -90,13 +91,18 @@ const getAllCodingInterviewDetails = async (req, res) => {
         start_date_time: 1,
         platform: 1,
         start_date_time_ist: 1,
-        interview_status: 1
+        interview_status: 1,
+        status: 1,
+        evaluation_status: 1,
+        evaluation_waiting_for_ai: 1,
+        evaluation_error: 1,
+        "attempt.started_at": 1
       }
     }
 
     ]);
 
-    return res.status(200).json(InterviewDetails);
+    return res.status(200).json(decorate(InterviewDetails));
   }
   catch (error) {
     return res.status(500).json({ message: "Internal server error", ...(process.env.NODE_ENV === "production" ? {} : { error: error.message }) });

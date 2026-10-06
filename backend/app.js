@@ -27,6 +27,7 @@ async function main() {
   }
   await detectTransactions();
   evaluationQueue.start();
+  require("./src/services/aiStatus").start(); // background AI health check
 
   const server = app.listen(env.port, () => console.log(`Server started on http://localhost:${env.port}/backend`));
   server.on("error", (err) => {

@@ -8,6 +8,8 @@ const Technology = require("../models/technology");
 const Company = require("../models/companies");
 const CompanyQuestion = require("../models/companyQuestion");
 const CodingQuestion = require("../models/codingQuestion");
+const LiteInterviewQuestion = require("../models/liteInterviewQuestion");
+const aiStatus = require("./aiStatus");
 const evaluation = require("./evaluation");
 const { normaliseType, modelFor, tenantOfInterview } = require("./interviewModels");
 const { HttpError, badRequest, forbidden, notFound, conflict, isObjectId, escapeRegex } = require("../lib/http");
@@ -52,13 +54,22 @@ async function buildQuestions(type, doc) {
         return `${m.module_name}: ${t.join(", ")}`;
       })
       .sort(() => Math.random() - 0.5);
-    const list = await evaluation.generateTechnologyQuestions({
-      technologyName: tech.technology_name,
-      level: doc.level,
-      count,
-      moduleTopics,
-    });
-    return list.map((q, i) => ({ qid: `q${i + 1}`, question: q }));
+    try {
+      const list = await evaluation.generateTechnologyQuestions({
+        technologyName: tech.technology_name,
+        level: doc.level,
+        count,
+        moduleTopics,
+      });
+      return list.map((q, i) => ({ qid: `q${i + 1}`, question: q, source: "ai" }));
+    } catch (err) {
+      // The interview must not be blocked when the AI is unavailable: fall back to
+      // the curated question bank, then to questions built from the syllabus topics.
+      console.warn(`[interview] AI question generation failed (${aiStatus.classify(err).message}); using fallback questions.`);
+      const fallback = await fallbackTechnologyQuestions({ doc, tech, modules, topicIds, count });
+      if (!fallback.length) throw err;
+      return fallback;
+    }
   }
 
   if (type === "company") {
@@ -92,6 +103,47 @@ async function buildQuestions(type, doc) {
     time: r.time,
     complexity: r.complexity,
   }));
+}
+
+// Question templates used when the AI cannot generate questions. {t} = topic, {m} = module, {x} = technology.
+const TOPIC_TEMPLATES = [
+  "What is {t} in {x}? Explain it with an example.",
+  "Why is {t} important in {m}, and when would you use it?",
+  "Explain how {t} works and mention one common mistake developers make with it.",
+  "Compare {t} with a related concept in {m}. What are the differences?",
+  "Describe a real-world scenario where you applied, or would apply, {t}.",
+];
+
+async function fallbackTechnologyQuestions({ doc, tech, modules, topicIds, count }) {
+  const out = [];
+  const seen = new Set();
+  const add = (question, source) => {
+    const key = question.trim().toLowerCase();
+    if (!question.trim() || seen.has(key) || out.length >= count) return;
+    seen.add(key);
+    out.push({ qid: `q${out.length + 1}`, question: question.trim(), source });
+  };
+  // 1. Curated practice bank for this technology.
+  const bank = await LiteInterviewQuestion.aggregate([
+    { $match: { technology: new mongoose.Types.ObjectId(String(doc.technology)), status: { $ne: 0 } } },
+    { $sample: { size: count * 2 } },
+  ]);
+  bank.forEach((b) => add(String(b.question || ""), "bank"));
+  // 2. Templates over the interview's topics (or modules if no topics were chosen).
+  const items = [];
+  modules.forEach((m) => {
+    const topics = m.topics.filter((x) => !topicIds.length || topicIds.includes(String(x._id)));
+    if (topics.length) topics.forEach((t) => items.push({ t: t.topic_name, m: m.module_name }));
+    else items.push({ t: m.module_name, m: m.module_name });
+  });
+  if (!items.length) items.push({ t: tech.technology_name, m: tech.technology_name });
+  for (let round = 0; out.length < count && round < TOPIC_TEMPLATES.length; round++) {
+    for (let i = 0; i < items.length && out.length < count; i++) {
+      const tpl = TOPIC_TEMPLATES[(i + round) % TOPIC_TEMPLATES.length];
+      add(tpl.replace("{t}", items[i].t).replace("{m}", items[i].m).replace("{x}", tech.technology_name), "template");
+    }
+  }
+  return out;
 }
 
 // ------------------------------------------------------------ views
@@ -137,7 +189,7 @@ async function interviewSummary(type, doc) {
 }
 
 const publicQuestion = (q) => {
-  const { source_id, ...rest } = q; // eslint-disable-line no-unused-vars
+  const { source_id, source, ...rest } = q; // eslint-disable-line no-unused-vars
   return { id: q.qid, ...rest };
 };
 
@@ -391,6 +443,10 @@ async function checkIdea({ type, interviewId, token, body }) {
   } catch (err) {
     // Give the check back if the AI call failed.
     await Model.updateOne({ _id: doc._id, "idea_checks.qid": qid }, { $inc: { "idea_checks.$.attempts": -1 } });
+    if (aiStatus.isOutage(err)) {
+      // Don't block the student: the idea check is skipped while the AI is unavailable.
+      return { accuracy: null, unavailable: true, message: "Idea check is unavailable right now. You can continue to write your code." };
+    }
     throw new HttpError(502, "Could not check your idea right now. Please try again.");
   }
   const updated = await Model.findOneAndUpdate(
@@ -458,6 +514,7 @@ async function attemptStatus({ type, interviewId, token }) {
     status: doc.status,
     evaluation_status: doc.evaluation_status || (doc.status === 0 ? "completed" : null),
     report_ready: doc.status === 0,
+    waiting_for_ai: doc.status !== 0 && Boolean(doc.evaluation_waiting_for_ai),
   };
 }
 

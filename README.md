@@ -82,7 +82,7 @@ The password for all of them is `Passw0rd!`.
 | `Port ... is already in use` | An old dev server is still running. Stop it (see above). |
 | `mongod not found` | `brew tap mongodb/brew && brew install mongodb-community`. Until then, dev uses a temporary in-memory database. |
 | Login works, but every page says "Please login" | Make sure you opened the app on `localhost` (not `127.0.0.1`) and started it with `npm run dev`. |
-| Interview "Could not prepare your questions", or scores never appear | The OpenAI key in `backend/.env` must allow model requests (`model.request` scope). Check the BACKEND log. |
+| Yellow "AI service unavailable" banner, or interviews stuck on "Waiting for AI" | The OpenAI key in `backend/.env` is missing, wrong, restricted or out of quota (the banner shows which). Fix the key, restart the backend, and the waiting interviews are scored automatically. Interviews keep working meanwhile, using bank and template questions. |
 | No OTP email arrives | Set `EMAIL_USER` / `EMAIL_PASS` (a Gmail app password) in `backend/.env`. |
 | Voice answer box doesn't appear | Use Chrome and allow the microphone, or click **Type instead**. |
 

@@ -289,11 +289,20 @@ Check the interview's platform. **mpod** interviews are taken at the kiosk, not 
 **A student's interview shows "Expired".**
 They didn't start within 5 minutes of the start time. Schedule a new one. Deleting the expired one does not refund its credit.
 
-**"Could not prepare your questions."**
-The AI service didn't answer. The student can click **Try again**, even shortly after the 5-minute window. If it keeps failing, check the backend's OpenAI key.
+**A yellow "AI service unavailable" banner appears in the admin portal.**
+mPod can't reach the AI right now, usually because of a wrong or restricted OpenAI key, or a quota limit. The banner shows the exact reason. While it lasts:
+- Interviews still run. Technology questions come from the question bank and the selected syllabus topics instead of being written by the AI.
+- The coding idea check is skipped, so students go straight on to writing code.
+- Answers are saved. Students see "Interview submitted… your report will be ready automatically".
+- Interviews show **Waiting for AI** in the lists and are scored automatically once the AI works again. You can also click **Retry evaluation**.
 
-**The evaluation shows "failed".**
-The answers are saved. The system retries automatically, up to 3 times. If it still fails (usually an AI service or key problem), fix the cause, then a staff member can re-queue it with the API call `POST /backend/api/interview-session/retry-evaluation {interview_id, interview_type}`. There is no button for this in the admin portal yet.
+To fix it, set a working key in `backend/.env` (see the README), then restart the backend. Platform admins can click **Check again** on the banner.
+
+**"Could not prepare your questions."**
+Questions could not be prepared at all. This happens, for example, when a company interview's filters match no bank questions, or there are no coding problems for the chosen level. Check that **Available Questions** isn't 0 when scheduling. The student can click **Try again** for up to 15 minutes.
+
+**The evaluation shows "Evaluation failed".**
+The answers are saved. Click **Retry evaluation** on the row in the interview list. While the AI is unavailable, interviews show **Waiting for AI** instead; they are retried automatically for up to 3 days.
 
 **Microphone or camera problems.**
 Use Chrome, allow the microphone and camera for the site, and reload. For voice questions, the student can always click **Type instead**.

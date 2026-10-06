@@ -1,4 +1,5 @@
 import PropTypes from 'prop-types'
+import AiStatusBanner from "../Common/AiStatusBanner";
 import React, { useEffect } from "react"
 
 import { connect } from "react-redux"
@@ -121,6 +122,7 @@ const Layout = (props) => {
           <div className="page-content">
             <Container fluid>
               <Breadcrumb />
+              <AiStatusBanner />
               {props.children}
             </Container>
           </div>

@@ -59,7 +59,7 @@ const retryEvaluation = asyncHandler(async (req, res) => {
   const type = normaliseType(interview_type);
   await loadInterviewForAccess(req, type, interview_id);
   const ok = await queue.retry(type, interview_id);
-  if (!ok) throw badRequest("Only failed evaluations can be retried.");
+  if (!ok) throw badRequest("Only failed or waiting evaluations can be retried.");
   return res.status(200).json({ message: "Evaluation queued again" });
 });
 

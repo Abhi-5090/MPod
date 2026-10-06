@@ -4,6 +4,7 @@ const CompanyQuestion = require("../models/companyQuestion");
 const scheduling = require("../services/scheduling");
 const { loadInterviewForAccess } = require("../services/interviewModels");
 const { asyncHandler } = require("../lib/http");
+const { decorate } = require("../services/interviewStatus");
 const { istDayRange } = require("../lib/time");
 
 // Company interviews: admin scheduling and lists. Questions are issued by the
@@ -104,12 +105,17 @@ const getAllInterviewDetails = async (req, res) => {
           questions_count: 1,
           platform: 1,
           start_date_time_ist: 1,
-          interview_status: 1
+          interview_status: 1,
+          status: 1,
+          evaluation_status: 1,
+          evaluation_waiting_for_ai: 1,
+          evaluation_error: 1,
+          "attempt.started_at": 1
         }
       }
     ]);
 
-    return res.status(200).json(InterviewDetails);
+    return res.status(200).json(decorate(InterviewDetails));
   } catch (error) {
     if (error.status) return res.status(error.status).json({ message: error.message });
     console.error("Error fetching interview details:", error);

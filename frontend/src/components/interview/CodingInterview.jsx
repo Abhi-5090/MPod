@@ -181,6 +181,13 @@ function CodingInterview({ session, client, onFinish }) {
     setIdeaInfo((x) => ({ ...x, checking: true, message: "" }));
     try {
       const { data } = await client.analyzeIdea(question.id, idea.trim());
+      if (data.unavailable) {
+        // AI is down: the idea check is skipped so the interview can continue.
+        await save();
+        setStage("code");
+        setIdeaInfo({ checking: false, message: data.message || "Idea check is unavailable right now. Continue with your code.", attemptsLeft: null });
+        return;
+      }
       if (data.accuracy >= IDEA_PASS) {
         await save();
         setStage("code");

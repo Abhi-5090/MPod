@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import RetryEvaluationButton from "../../components/Common/RetryEvaluationButton";
 import { Row, Col, Card, CardBody, CardTitle, Button, Badge, Input } from "reactstrap";
 import { connect } from "react-redux";
 import { Link } from "react-router-dom";
@@ -14,9 +15,8 @@ import ConfirmModal from "../../components/Common/ConfirmModal";
 import {
   attemptedPercentage,
   deleteResultMessage,
-  getYesterdayDateString,
-  studentReportUrl,
-} from "./interviewHelpers";
+  getTodayDateString,
+  studentReportUrl, statusColor, canRetryEvaluation } from "./interviewHelpers";
 import "./datatables.scss";
 
 // map raw interviews to table rows
@@ -41,7 +41,7 @@ const CompanyInterviewsList = (props) => {
   const { tenantId, tenantName } = tenantSelection;
   const [interviewsData, setInterviewsData] = useState([]); // date-scoped data from server
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterDate, setFilterDate] = useState(getYesterdayDateString()); // YYYY-MM-DD
+  const [filterDate, setFilterDate] = useState(getTodayDateString()); // YYYY-MM-DD
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedInterviewId, setSelectedInterviewId] = useState(null);
@@ -83,15 +83,15 @@ const CompanyInterviewsList = (props) => {
   );
 
   useEffect(() => {
-    fetchInterviewsData(filterDate || getYesterdayDateString());
+    fetchInterviewsData(filterDate || getTodayDateString());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchInterviewsData]);
 
-  // handle date change: request that specific date from server (cleared -> yesterday)
+  // handle date change: request that specific date from server (cleared -> today)
   const handleDateChange = (e) => {
     const val = e.target.value;
     setFilterDate(val || "");
-    fetchInterviewsData(val || getYesterdayDateString());
+    fetchInterviewsData(val || getTodayDateString());
   };
 
   // search applies on interviewsData (already date-scoped)
@@ -142,7 +142,7 @@ const CompanyInterviewsList = (props) => {
       text: "Status",
       sort: true,
       formatter: (cell) => (
-        <Badge color={cell === "Attempted" ? "success" : cell === "Expired" ? "danger" : "warning"} pill>
+        <Badge color={statusColor(cell)} pill>
           {cell}
         </Badge>
       ),
@@ -172,6 +172,9 @@ const CompanyInterviewsList = (props) => {
               <Link to={`/edit-company-interview/${interview._id}`} className="btn btn-primary btn-sm me-2">
                 Edit
               </Link>
+            )}
+            {canRetryEvaluation(interview.interview_status) && (
+              <RetryEvaluationButton interviewId={interview._id} interviewType="company" title={interview.evaluation_error || ""} />
             )}
             <Button color="danger" size="sm" onClick={() => setSelectedInterviewId(interview._id)}>
               Delete
@@ -303,7 +306,7 @@ const CompanyInterviewsList = (props) => {
                     value={filterDate}
                     onChange={handleDateChange}
                   />
-                  <small className="text-muted">Showing yesterday by default</small>
+                  <small className="text-muted">Showing today by default</small>
                 </Col>
               </Row>
 
@@ -312,7 +315,7 @@ const CompanyInterviewsList = (props) => {
                 error={error}
                 empty={!tenantId || !filteredRows.length}
                 emptyText={tenantId ? "No interviews found for selected date." : "Select a college"}
-                onRetry={() => fetchInterviewsData(filterDate || getYesterdayDateString())}
+                onRetry={() => fetchInterviewsData(filterDate || getTodayDateString())}
               >
                 <BootstrapTable
                   bootstrap4

@@ -30,3 +30,21 @@ export const attemptedPercentage = (attempted, expired) => {
   const total = attempted + expired
   return total ? ((attempted / total) * 100).toFixed(2) : 0
 }
+
+// Badge colour for the statuses returned by the interview list endpoints.
+export const statusColor = (status) =>
+  ({
+    Attempted: "success",
+    Upcoming: "info",
+    "In progress": "primary",
+    Evaluating: "secondary",
+    "Waiting for AI": "warning",
+    "Evaluation failed": "danger",
+    Expired: "dark",
+  })[status] || "light";
+
+export const canRetryEvaluation = (status) => status === "Evaluation failed" || status === "Waiting for AI";
+
+// YYYY-MM-DD for today in IST (UTC+5:30). Lists open on today so freshly scheduled
+// interviews are visible straight away.
+export const getTodayDateString = () => new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);

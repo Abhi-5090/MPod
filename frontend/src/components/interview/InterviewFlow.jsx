@@ -108,6 +108,10 @@ function InterviewFlow({ details, startSession, onExit, kiosk }) {
           window.location.href = reportPath(session.interview);
           return;
         }
+        if (data.waiting_for_ai) {
+          setStage("delayed");
+          return;
+        }
         if (data.evaluation_status === "failed") {
           setError("Your answers were saved, but the evaluation failed. Your college can retry it from the admin portal.");
           setStage("error");
@@ -147,6 +151,27 @@ function InterviewFlow({ details, startSession, onExit, kiosk }) {
         <div className="mpod-panel mpod-panel-narrow" style={{ textAlign: "center" }}>
           <ThreeDots visible height={60} width={60} color="#5EE3EC" ariaLabel="loading" wrapperStyle={{ justifyContent: "center" }} />
           <p className="mpod-muted" role="status">{text}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (stage === "delayed") {
+    return (
+      <div className="mpod-center">
+        <div className="mpod-panel mpod-panel-narrow" role="status">
+          <h2 className="mpod-title">Interview submitted</h2>
+          <p className="mpod-muted">
+            All your answers are saved. Scoring is taking longer than usual right now; your report will be ready
+            automatically{kiosk ? " and you can view it by signing in on the mPod website." : " and will appear under My Interviews on your dashboard."}
+          </p>
+          <div className="mpod-actions">
+            {kiosk ? (
+              <button className="mpod-btn mpod-btn-primary" onClick={onExit || (() => window.location.reload())}>Done - next student</button>
+            ) : (
+              <button className="mpod-btn mpod-btn-primary" onClick={() => (window.location.href = "/dashboard")}>Go to dashboard</button>
+            )}
+          </div>
         </div>
       </div>
     );

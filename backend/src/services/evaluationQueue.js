@@ -1,11 +1,15 @@
 const crypto = require("crypto");
 const env = require("../config/env");
 const evaluation = require("./evaluation");
+const aiStatus = require("./aiStatus");
 const { modelFor, normaliseType } = require("./interviewModels");
 
 const LEASE_MS = 5 * 60 * 1000;
 const HEARTBEAT_MS = 60 * 1000; // lease is renewed while the job is running
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = 3; // for errors caused by this interview's data
+// While the AI provider is down, keep the answers and retry with backoff instead of failing.
+const OUTAGE_MAX_WAIT_MS = 72 * 3600 * 1000;
+const OUTAGE_BACKOFF_MS = [2, 5, 10, 20, 30].map((m) => m * 60 * 1000);
 const SWEEP_MS = 60 * 1000;
 
 const queue = [];
@@ -85,10 +89,31 @@ async function runJob(type, id) {
           evaluation_error: null,
           evaluation_lease_until: null,
           evaluation_lease_id: null,
+          evaluation_waiting_for_ai: false,
+          evaluation_outage_retries: 0,
         },
       }
     );
   } catch (err) {
+    if (aiStatus.isOutage(err)) {
+      const submitted = doc.submitted_at ? new Date(doc.submitted_at).getTime() : Date.now();
+      const giveUp = Date.now() - submitted > OUTAGE_MAX_WAIT_MS;
+      const k = doc.evaluation_outage_retries || 0;
+      const wait = OUTAGE_BACKOFF_MS[Math.min(k, OUTAGE_BACKOFF_MS.length - 1)];
+      console.warn(`[evaluation] ${type} ${doc._id} waiting for AI (${aiStatus.classify(err).message}); retry in ${Math.round(wait / 60000)} min.`);
+      await Model.updateOne(mine, {
+        $set: {
+          evaluation_lease_id: null,
+          evaluation_status: giveUp ? "failed" : "pending",
+          evaluation_error: `AI unavailable: ${aiStatus.classify(err).message}`.slice(0, 500),
+          evaluation_waiting_for_ai: !giveUp,
+          evaluation_lease_until: giveUp ? null : new Date(Date.now() + wait),
+        },
+        // an outage is not this interview's fault: don't use up its attempts
+        $inc: { evaluation_attempts: -1, evaluation_outage_retries: 1 },
+      });
+      return;
+    }
     console.error(`[evaluation] ${type} ${doc._id} attempt ${doc.evaluation_attempts} failed:`, err.message);
     const failed = doc.evaluation_attempts >= MAX_ATTEMPTS;
     await Model.updateOne(
@@ -180,8 +205,8 @@ function stop() {
 async function retry(type, id) {
   const Model = modelFor(type);
   const r = await Model.updateOne(
-    { _id: id, evaluation_status: "failed" },
-    { $set: { evaluation_status: "pending", evaluation_attempts: 0, evaluation_lease_until: null } }
+    { _id: id, $or: [{ evaluation_status: "failed" }, { evaluation_status: "pending", evaluation_waiting_for_ai: true }] },
+    { $set: { evaluation_status: "pending", evaluation_attempts: 0, evaluation_outage_retries: 0, evaluation_lease_until: null } }
   );
   if (r.modifiedCount) enqueue(type, id);
   return r.modifiedCount > 0;
