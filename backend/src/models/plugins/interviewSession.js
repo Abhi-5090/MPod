@@ -40,6 +40,16 @@ module.exports = function interviewSessionPlugin(schema) {
     evaluation_attempts: { type: Number, default: 0 },
     evaluation_error: String,
     evaluated_at: Date,
+    // How the AI evaluation was produced (audit and model calibration):
+    // providers, provider:model pairs, number of calls, tokens and duration.
+    evaluation_ai: {
+      providers: [String],
+      models: [String],
+      calls: Number,
+      prompt_tokens: Number,
+      completion_tokens: Number,
+      duration_ms: Number,
+    },
     credit_refunded: { type: Boolean, default: false },
   });
 

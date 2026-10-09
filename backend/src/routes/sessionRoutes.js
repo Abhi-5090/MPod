@@ -21,8 +21,10 @@ Router.get("/api/system-status", requireStaff(), async (req, res, next) => {
   try {
     const aiStatus = require("../services/aiStatus");
     const { isPlatformRole } = require("../config/roles");
-    const ai = req.query.refresh === "1" && isPlatformRole(req.auth.role) ? await aiStatus.check() : aiStatus.getStatus();
-    res.json({ ai });
+    const platform = isPlatformRole(req.auth.role);
+    const ai = req.query.refresh === "1" && platform ? await aiStatus.check() : aiStatus.getStatus();
+    // Provider endpoints and model names are for platform admins only.
+    res.json(platform ? { ai, config: require("../services/ai").describe() } : { ai });
   } catch (e) {
     next(e);
   }

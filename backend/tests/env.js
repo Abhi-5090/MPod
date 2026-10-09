@@ -1,6 +1,10 @@
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = "test-secret-that-is-long-enough-for-hs256-signing";
 process.env.OPENAI_API_KEY = "test";
+// Tests always use the (faked) OpenAI provider, whatever backend/.env says.
+process.env.AI_PROVIDER = "openai";
+process.env.AI_FALLBACK_PROVIDER = "none";
+process.env.OLLAMA_PRELOAD = "false";
 process.env.EMAIL_USER = "noreply@example.com";
 process.env.EMAIL_PASS = "x";
 if (!process.env.MONGOMS_SYSTEM_BINARY) {

@@ -39,13 +39,13 @@ The AI generates or selects questions, reads them aloud, captures spoken or type
 | Unit of value | One evaluated interview = one credit |
 | Interview types | **Technology** (AI-generated from a syllabus), **Company** (from a company question bank), **Coding** (from a coding problem bank: idea → code → optimise) |
 | Channels | Student website, campus kiosk, admin portal |
-| AI provider | OpenAI chat completions (question generation, answer scoring, coding review, idea check) |
+| AI provider | Pluggable AI gateway: OpenAI (hosted) or Ollama (self-hosted, e.g. NVIDIA DGX Spark), with automatic failover between them (question generation, answer scoring, coding review, idea check) |
 
 **Three applications in one repository:**
 
 | App | Folder | Tech | Dev URL |
 |---|---|---|---|
-| Backend API | `backend/` | Node.js 20, Express 4, Mongoose 7 (MongoDB replica set), OpenAI SDK, Nodemailer | `http://localhost:8002/backend` |
+| Backend API | `backend/` | Node.js 20, Express 4, Mongoose 7 (MongoDB replica set), OpenAI SDK + Ollama REST API, Nodemailer | `http://localhost:8002/backend` |
 | Student website + kiosk + reports | `frontend/` | React 18, Vite 5, React Router 6, axios, react-speech-recognition, Web Speech TTS, face-api.js, react-to-pdf | `http://localhost:3000` |
 | Admin portal | `Admin/` | React 18, Vite 5, React Router 6 (base `/admin`), Redux (layout only), reactstrap/Bootstrap 5, react-select, flatpickr, MDB/react-bootstrap-table, ApexCharts/Recharts, xlsx | `http://localhost:8003/admin` |
 
@@ -68,8 +68,8 @@ The AI generates or selects questions, reads them aloud, captures spoken or type
                 │  reports • dashboards • uploads • rate limiting      │
                 └───────┬──────────────┬───────────────┬──────────────┘
                         │              │               │
-                  MongoDB (replica   OpenAI API      SMTP (Gmail)
-                  set; 17 collections)               OTP & schedule emails
+                  MongoDB (replica   AI gateway:     SMTP (Gmail)
+                  set; 17 collections) Ollama/OpenAI OTP & schedule emails
                         │
                 Local disk: profile photos, technology/module icons,
                 face-api models (served by the API)
@@ -390,14 +390,20 @@ All content can be read by any staff member (needed for scheduling) and changed 
 - **Status** (`GET /interview-session/status`): `{status, evaluation_status, report_ready, waiting_for_ai}`.
 - **Kiosk lookup** (`POST /kiosk/interview {roll_no}`): the startable or resumable `mpod` interview for that student at this kiosk's college, including interview summary details.
 
-### 6.7 AI evaluation (`services/evaluation.js`)
-- **Models**, configurable by env:
-  - `OPENAI_SCORING_MODEL` = `gpt-4o`: verbal answer scoring
-  - `OPENAI_GENERATION_MODEL` = `gpt-3.5-turbo`: question generation and the health check
-  - `OPENAI_SUMMARY_MODEL` = `gpt-3.5-turbo`: overall analysis
-  - `OPENAI_CODING_MODEL` = `gpt-4-turbo`: idea check, code review, optimisation comparison
+### 6.7 AI evaluation (`services/evaluation.js`, gateway `services/ai/`)
+- **AI gateway.** Every model call goes through `services/ai`, which:
+  - picks the provider (`AI_PROVIDER` = `openai` or `ollama`);
+  - fails over to `AI_FALLBACK_PROVIDER` on outages, skipping a failed provider for 60 s;
+  - limits concurrent requests per provider, serving interactive calls first;
+  - tolerates reasoning text around the JSON and retries invalid JSON once;
+  - records provider, model, tokens and time per evaluation (`evaluation_ai`).
+- **Tasks and default models** (OpenAI / Ollama):
+  - **scoring:** `gpt-4o` / `gpt-oss:120b` (verbal answer scoring)
+  - **generation:** `gpt-3.5-turbo` / `gpt-oss:20b` (question generation, OpenAI health check)
+  - **summary:** `gpt-3.5-turbo` / `gpt-oss:20b` (overall analysis)
+  - **coding:** `gpt-4-turbo` / `qwen3-coder:30b` (idea check, code review, optimisation comparison)
 
-  All calls use JSON mode.
+  Models are configurable with `OPENAI_*_MODEL` and `OLLAMA_*_MODEL`. All calls request JSON output. Ollama uses its native API with `num_ctx`, `num_predict`, `keep_alive` and `think` set per request.
 - **Question generation:** "exactly N questions, single, ≤ 25 words, no code (except the Placements technology)" over shuffled module/topic lists. Timeout 25 s, 1 retry, 2 tries.
 - **Verbal scoring rubric:**
 
@@ -676,9 +682,9 @@ The error is always re-rejected.
 #### AI status banner (`components/Common/AiStatusBanner.js`)
 - Runs only when a user is logged in.
 - Calls `GET system-status` on mount and every 5 minutes. "Check again" calls `GET system-status?refresh=1`.
-- Shown only when `res.data.ai` exists and `ai.available` is false. Errors are ignored.
+- Shown when `ai.available` is false (warning). Also shown to platform roles as an info Alert when `ai.degraded` is true (the primary provider is down and the fallback is serving). Errors are ignored.
 - It is a warning Alert with this text: **"AI service unavailable."** `{ai.message}` "Interviews still run: technology questions come from the question bank and syllabus, the coding idea check is skipped, and scores are completed automatically once the AI is back."
-- Platform roles also see: " Fix: give the OpenAI API key the model.request permission (or set a working key) in backend/.env and restart the backend." plus a link button **"Check again"** (shows "Checking..." while running).
+- Platform roles also see "Fix: {ai.hint}": a provider-specific fix from the server (for example the OpenAI key permission, `ollama pull <model>`, or starting the Ollama service). They also get a link button **"Check again"** (shows "Checking..." while running).
 
 #### Sidebar menu (`config/menu.js`)
 - Groups are filtered by role. Each group is a collapsible MetisMenu entry with an icon from `/admin/dashboard-icons/<icon>`.
@@ -2282,7 +2288,10 @@ MongoDB collections (Mongoose models). Timestamps (`createdAt`, `updatedAt`) exi
 |---|---|
 | `MONGODB_URI` | Database (replica set for transactions) |
 | `JWT_SECRET` | Signs session tokens and the OTP HMAC (≥ 32 random characters recommended) |
-| `OPENAI_API_KEY` | AI provider key; needs the chat-completions (`model.request`) permission |
+| `AI_PROVIDER`, `AI_FALLBACK_PROVIDER` | `openai` or `ollama`; the fallback (or `none`) is used while the primary is unavailable |
+| `OPENAI_API_KEY`, `OPENAI_BASE_URL` | OpenAI key (needs the `model.request` permission); optional OpenAI-compatible endpoint |
+| `OLLAMA_BASE_URL`, `OLLAMA_*_MODEL`, `OLLAMA_MAX_CONCURRENCY`, `OLLAMA_NUM_CTX`, `OLLAMA_KEEP_ALIVE`, `OLLAMA_THINK`, `OLLAMA_REASONING_TOKENS`, `OLLAMA_PRELOAD`, `OLLAMA_TIMEOUT_MS` | Self-hosted Ollama settings (see DEPLOY_DGX_SPARK.md) |
+| `HOST` | Listen interface (`127.0.0.1` behind a local nginx) |
 | `OPENAI_SCORING_MODEL`, `OPENAI_GENERATION_MODEL`, `OPENAI_SUMMARY_MODEL`, `OPENAI_CODING_MODEL` | Model overrides |
 | `EMAIL_USER`, `EMAIL_PASS` | SMTP (Gmail app password) |
 | `PORT`, `NODE_ENV` | Server port; `production` enables Secure cookies and hides error details |
@@ -2339,7 +2348,7 @@ These are factual gaps in the current implementation, useful as input for an enh
 - Interview data is split across three collections with similar schemas; a single interview collection with a type field would simplify the code.
 - Users are keyed by `roll_no` (unique only by convention across colleges); profile photos are stored by roll number globally.
 - Legacy admin pages use older libraries (reactstrap 9, mdbreact, availity validation, react-bootstrap-table); the report pages are large legacy components.
-- AI uses older OpenAI models by default (configurable); there's no structured rubric per question, no calibration set and no per-question reference answers except bank questions.
+- OpenAI defaults are older models (configurable). Self-hosted models via Ollama are supported, and `ai:calibrate` compares providers on a small built-in answer set. There's still no structured rubric per question, no large calibration set and no per-question reference answers except bank questions.
 - No API documentation (OpenAPI), no metrics, tracing or alerting, no CI pipeline, no front-end tests.
 - GDPR/DPDP features are missing: consent capture for camera/voice, data retention policies, data export/delete requests.
 - Admin UI inconsistencies (question-count limits, edit pages without student search, the Company Interviews list not showing the Provisional badge, hidden delete buttons) are listed in section 8.6.

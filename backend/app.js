@@ -29,7 +29,9 @@ async function main() {
   evaluationQueue.start();
   require("./src/services/aiStatus").start(); // background AI health check
 
-  const server = app.listen(env.port, () => console.log(`Server started on http://localhost:${env.port}/backend`));
+  const server = app.listen(env.port, env.host, () =>
+    console.log(`Server started on http://${env.host || "localhost"}:${env.port}/backend`)
+  );
   server.on("error", (err) => {
     if (err.code === "EADDRINUSE") {
       console.error(`Port ${env.port} is already in use - another backend is probably still running.`);

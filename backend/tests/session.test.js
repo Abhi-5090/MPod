@@ -84,6 +84,10 @@ describe("server-owned technology interview", () => {
     expect(done.question_details).toHaveLength(3);
     expect(done.question_details[0].accuracy).toBe(85);
     expect(done.question_details[2].accuracy).toBe(0); // unanswered
+    // the evaluation records which provider and models produced it
+    expect(done.evaluation_ai.providers).toEqual(["openai"]);
+    expect(done.evaluation_ai.models).toEqual(expect.arrayContaining([`openai:${require("../src/config/env").ai.openai.models.scoring}`]));
+    expect(done.evaluation_ai.calls).toBeGreaterThanOrEqual(3);
     // answers can no longer change
     expect((await save(qs[0].id, "late")).status).toBe(409);
     // scoring prompt fences the candidate answer as untrusted data

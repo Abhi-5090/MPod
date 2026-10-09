@@ -12,7 +12,9 @@
     "seed": "npm --prefix backend run seed:dev",
     "test": "npm --prefix backend test",
     "build": "npm --prefix frontend run build && npm --prefix Admin run build",
-    "migrate": "npm --prefix backend run migrate"
+    "migrate": "npm --prefix backend run migrate",
+    "ai:check": "npm --prefix backend run ai:check --",
+    "ai:calibrate": "npm --prefix backend run ai:calibrate --"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

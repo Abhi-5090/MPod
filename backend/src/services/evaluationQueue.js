@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const env = require("../config/env");
 const evaluation = require("./evaluation");
+const ai = require("./ai");
 const aiStatus = require("./aiStatus");
 const provisional = require("./provisionalScoring");
 const { modelFor, normaliseType } = require("./interviewModels");
@@ -55,6 +56,13 @@ function provisionalDoc(doc) {
   return { question_details: results, overall_analysis: [overall] };
 }
 
+// evaluateDoc plus a record of which provider/models produced it.
+async function evaluateTracked(type, doc) {
+  const startedAt = Date.now();
+  const { value, usage } = await ai.track(() => evaluateDoc(type, doc));
+  return { ...value, evaluation_ai: ai.usageSummary(usage, startedAt) };
+}
+
 async function evaluateDoc(type, doc) {
   const questions = doc.issued_questions || [];
   const byQid = {};
@@ -91,13 +99,14 @@ async function runJob(type, id) {
   }, HEARTBEAT_MS);
   heartbeat.unref();
   try {
-    const out = await evaluateDoc(type, doc);
+    const out = await evaluateTracked(type, doc);
     await Model.updateOne(
       mine,
       {
         $set: {
           question_details: out.question_details,
           overall_analysis: out.overall_analysis,
+          evaluation_ai: out.evaluation_ai,
           status: 0,
           evaluation_status: "completed",
           evaluated_at: new Date(),
@@ -208,13 +217,14 @@ async function rescore(type, id) {
   );
   if (!doc) return;
   try {
-    const out = await evaluateDoc(type, doc);
+    const out = await evaluateTracked(type, doc);
     await Model.updateOne(
       { _id: doc._id, ai_rescore_pending: true },
       {
         $set: {
           question_details: out.question_details,
           overall_analysis: out.overall_analysis,
+          evaluation_ai: out.evaluation_ai,
           evaluation_mode: "ai",
           ai_rescore_pending: false,
           rescore_next_at: null,

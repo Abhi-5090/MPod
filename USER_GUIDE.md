@@ -290,13 +290,16 @@ Check the interview's platform. **mpod** interviews are taken at the kiosk, not 
 They didn't start within 5 minutes of the start time. Schedule a new one. Deleting the expired one does not refund its credit.
 
 **A yellow "AI service unavailable" banner appears in the admin portal.**
-mPod can't reach the AI right now, usually because of a wrong or restricted OpenAI key, or a quota limit. The banner shows the exact reason. While it lasts:
+mPod can't reach the AI right now: for example a wrong or restricted OpenAI key, a quota limit, or (on a self-hosted GPU server) Ollama not running or a model not installed. The banner shows the exact reason and, for platform admins, the fix. While it lasts:
 - Interviews still run. Technology questions come from the question bank and the selected syllabus topics instead of being written by the AI.
 - The coding idea check is skipped, so students go straight on to writing code.
 - **Technology and company interviews get a provisional score straight away.** It is calculated without AI from how well each answer covers the question's key points, compared with the bank's model answer where one exists, and from how complete the answer is. The report and the lists mark it **Provisional**. When the AI is back, the interview is re-scored by the AI automatically, or immediately if you click **Re-score with AI**, and the report updates.
 - **Coding interviews wait for the AI** (status **Waiting for AI**), because correctness of code can't be judged fairly without it. Their answers are saved and they are scored automatically once the AI works again, or when you click **Retry evaluation**.
 
-To fix it, set a working key in `backend/.env` (see the README), then restart the backend. Platform admins can click **Check again** on the banner.
+To fix it, follow the fix shown on the banner (see also the README and DEPLOY_DGX_SPARK.md), then restart the backend. Platform admins can click **Check again** on the banner.
+
+**A blue "Primary AI provider unavailable; using ... as backup" banner appears (platform admins only).**
+The main AI provider (for example Ollama on the GPU server) is down and the backup provider (for example OpenAI) is serving instead. Nothing is delayed for students. Fix the main provider using the hint on the banner; mPod switches back automatically within about a minute.
 
 **"Could not prepare your questions."**
 Questions could not be prepared at all. This happens, for example, when a company interview's filters match no bank questions, or there are no coding problems for the chosen level. Check that **Available Questions** isn't 0 when scheduling. The student can click **Try again** for up to 15 minutes.

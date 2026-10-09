@@ -1,0 +1,38 @@
+# mPod backend API.
+# Install: sudo cp mpod-backend.service /etc/systemd/system/ && sudo systemctl daemon-reload
+#          sudo systemctl enable --now mpod-backend
+# Logs:    journalctl -u mpod-backend -f
+#
+# Run exactly ONE instance: the evaluation queue and rate limits live in this process.
+
+[Unit]
+Description=mPod backend API
+After=network-online.target mongod.service ollama.service
+Wants=network-online.target mongod.service ollama.service
+
+[Service]
+Type=simple
+User=mpod
+Group=mpod
+WorkingDirectory=/opt/mpod/backend
+# Everything else (database, secrets, AI settings) is read from /opt/mpod/backend/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node app.js
+Restart=always
+RestartSec=5
+# app.js shuts down gracefully on SIGTERM (finishes requests, releases evaluation leases)
+KillSignal=SIGTERM
+TimeoutStopSec=20
+LimitNOFILE=65536
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

@@ -29,30 +29,52 @@ const AiStatusBanner = () => {
     return () => clearInterval(t)
   }, [user, load])
 
-  if (!ai || ai.available) return null
+  if (!ai) return null
   const platform = user && isPlatformRole(user.role)
+  // Primary provider down but the fallback is serving: only platform admins need to know.
+  if (ai.available && !(ai.degraded && platform)) return null
+
+  const label = (name) => ((ai.providers || []).find((p) => p.name === name) || {}).label || name
+  const checkAgain = platform && (
+    <Button
+      color="link"
+      size="sm"
+      className="p-0 ms-2 align-baseline"
+      disabled={checking}
+      onClick={async () => {
+        setChecking(true)
+        await load(true)
+        setChecking(false)
+      }}
+    >
+      {checking ? "Checking..." : "Check again"}
+    </Button>
+  )
+  const fix = platform && ai.hint ? ` Fix: ${ai.hint}` : ""
+
+  if (ai.degraded) {
+    const title = ai.partial
+      ? `Some ${label(ai.provider)} models are not available. ${
+          ai.fallback ? `Those tasks use ${label(ai.fallback)} as backup.` : "Those tasks use the question bank and provisional scores."
+        }`
+      : `Primary AI provider (${label(ai.provider)}) unavailable; using ${label(ai.serving)} as backup.`
+    return (
+      <Alert color="info" className="mb-3">
+        <strong>{title}</strong>{" "}
+        {ai.message}
+        {fix}
+        {checkAgain}
+      </Alert>
+    )
+  }
 
   return (
     <Alert color="warning" className="mb-3">
       <strong>AI service unavailable.</strong> {ai.message}{" "}
       Interviews still run: technology questions come from the question bank and syllabus, the coding idea check is
       skipped, and scores are completed automatically once the AI is back.
-      {platform && " Fix: give the OpenAI API key the model.request permission (or set a working key) in backend/.env and restart the backend."}
-      {platform && (
-        <Button
-          color="link"
-          size="sm"
-          className="p-0 ms-2 align-baseline"
-          disabled={checking}
-          onClick={async () => {
-            setChecking(true)
-            await load(true)
-            setChecking(false)
-          }}
-        >
-          {checking ? "Checking..." : "Check again"}
-        </Button>
-      )}
+      {fix}
+      {checkAgain}
     </Alert>
   )
 }
