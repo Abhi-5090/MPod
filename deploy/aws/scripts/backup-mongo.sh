@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Nightly MongoDB backup with retention. Run from root's crontab, e.g.:
-#   30 2 * * * /opt/mpod/deploy/dgx-spark/scripts/backup-mongo.sh >> /var/log/mpod-backup.log 2>&1
+#   30 2 * * * /opt/mpod/deploy/aws/scripts/backup-mongo.sh >> /var/log/mpod-backup.log 2>&1
 # Needs /etc/mpod/backup.env (chmod 600) containing:
 #   MONGO_BACKUP_URI="mongodb://mpod_backup:<password>@127.0.0.1:27017/?authSource=admin&replicaSet=rs0"
 # Copy the backup folder to another machine or cloud storage as well: a backup on the

@@ -10,7 +10,10 @@ const COOL_DOWN_MS = 60 * 1000;
 // While any provider is down, health-check it this often so it is used again quickly.
 const DOWN_CHECK_MS = 60 * 1000;
 
-const LABELS = { openai: "OpenAI", ollama: "Ollama" };
+const labelOf = (name) => {
+  const p = require("./ai").providers[name]; // lazy: avoids a require cycle
+  return (p && p.label) || name;
+};
 
 const blank = () => ({
   ok: null, // null = not checked yet
@@ -41,15 +44,20 @@ function classify(err) {
 // Errors that mean "the AI is unavailable right now" (not a problem with this request).
 const isOutage = (err) => normalise(err).outage;
 
+function missingHint(name, list) {
+  const p = require("./ai").providers[name];
+  return p && p.missingHint ? p.missingHint(list) : null;
+}
+
 // Status text for a provider with missing models (the provider itself works).
 function describeMissing(name, s, e) {
   const list = [...s.missing.keys()];
-  const label = LABELS[name] || name;
+  const label = labelOf(name);
   Object.assign(s, {
     ok: false,
     reason: "model_missing",
     message: `${label} model${list.length > 1 ? "s" : ""} not available: ${list.join(", ")}.`,
-    hint: name === "ollama" ? `On the AI server run: ${list.map((m) => `ollama pull ${m}`).join(" && ")}` : (e && e.hint) || s.hint,
+    hint: missingHint(name, list) || (e && e.hint) || s.hint,
     retry_at: null,
     checked_at: new Date(),
   });
@@ -67,7 +75,7 @@ function recordSuccess(provider = env.ai.provider, model) {
   const wasDown = s.ok === false;
   Object.assign(s, { ok: true, reason: null, message: null, hint: null, retry_at: null, checked_at: new Date() });
   s.last_success_at = s.checked_at;
-  if (wasDown && !env.isTest) console.log(`[ai] ${LABELS[provider] || provider} is available again.`);
+  if (wasDown && !env.isTest) console.log(`[ai] ${labelOf(provider)} is available again.`);
 }
 
 function recordFailure(err, provider, model) {
@@ -145,10 +153,11 @@ async function check() {
           retry_at: new Date(Date.now() + COOL_DOWN_MS),
         });
       }
-      if (!env.isTest) console.warn(`[ai] ${LABELS[name] || name} unavailable: ${e.message}${e.hint ? ` Fix: ${e.hint}` : ""}`);
+      if (!env.isTest) console.warn(`[ai] ${labelOf(name)} unavailable: ${e.message}${e.hint ? ` Fix: ${e.hint}` : ""}`);
     }
   }
-  const anyDown = chain().some((n) => stateOf(n).ok === false);
+  await require("./ai/vision").check();
+  const anyDown = chain().some((n) => stateOf(n).ok === false) || require("./ai/vision").getStatus().available === false;
   schedule(anyDown ? DOWN_CHECK_MS : env.ai.healthCheckMinutes * 60 * 1000);
   return getStatus();
 }
@@ -160,14 +169,17 @@ function start() {
   const desc = chain()
     .map((n) => {
       const d = ai.providers[n].describe();
-      return `${LABELS[n]} (${d.endpoint}; ${Object.entries(d.models).map(([t, m]) => `${t}=${m}`).join(", ")})`;
+      return `${labelOf(n)} (${d.endpoint}; ${Object.entries(d.models).map(([t, m]) => `${t}=${m}`).join(", ")})`;
     })
     .join(" -> fallback ");
   console.log(`[ai] provider: ${desc}`);
-  if (chain().includes("ollama") && env.ai.ollama.preload) {
+  const vision = require("./ai/vision");
+  console.log(`[ai] camera analysis: ${vision.enabled() ? `DGX vision service (${env.ai.vision.url})` : "in the browser (DGX_VISION_URL not set)"}`);
+  if (vision.transportWarning()) console.warn(`[security] ${vision.transportWarning()}`);
+  if (chain().includes("dgx") && env.ai.dgx.preload) {
     // Load the models into GPU memory first so the first interviews are fast.
-    ai.providers.ollama
-      .preload((m) => console.log(`[ai] Ollama ${m}`))
+    ai.providers.dgx
+      .preload((m) => console.log(`[ai] ${labelOf("dgx")} ${m}`))
       .finally(() => check().catch(() => {}));
   } else {
     check().catch(() => {});
@@ -186,7 +198,7 @@ const publicState = (name) => {
   delete s.missing;
   // A provider with only some models missing still serves the other tasks.
   const partial = s.ok === false && s.reason === "model_missing";
-  return { name, label: LABELS[name] || name, ...s, available: s.ok !== false || partial, partial };
+  return { name, label: labelOf(name), ...s, available: s.ok !== false || partial, partial };
 };
 
 /**
@@ -221,6 +233,8 @@ function getStatus() {
     checked_at: primary.checked_at,
     last_success_at: primary.last_success_at,
     providers: list,
+    // Camera model on the DGX Spark (browser model is used when not configured or down).
+    vision: require("./ai/vision").getStatus(),
   };
 }
 
@@ -229,4 +243,4 @@ function _reset() {
   for (const k of Object.keys(states)) delete states[k];
 }
 
-module.exports = { getStatus, recordSuccess, recordFailure, isOutage, isCoolingDown, classify, check, start, stop, _reset };
+module.exports = { recheckSoon: () => scheduleSoon(), getStatus, recordSuccess, recordFailure, isOutage, isCoolingDown, classify, check, start, stop, _reset };

@@ -14,6 +14,7 @@ const PUBLIC = new Set([
   // authorised by the per-attempt token instead of a cookie
   "POST /backend/api/interview-session/answer",
   "POST /backend/api/interview-session/analyze-idea",
+  "POST /backend/api/interview-session/face-frame",
   "POST /backend/api/interview-session/submit",
   "GET /backend/api/interview-session/status",
   "GET /backend/api/health",
@@ -64,7 +65,7 @@ describe("every API route requires authentication unless explicitly public", () 
   );
 
   test("token-authorised session routes reject a missing token", async () => {
-    for (const p of ["answer", "submit", "analyze-idea"]) {
+    for (const p of ["answer", "submit", "analyze-idea", "face-frame"]) {
       const res = await request(app).post(`/backend/api/interview-session/${p}`).send({ interview_type: "company", interview_id: "64b000000000000000000000" });
       expect(res.status).toBe(401);
     }

@@ -1,8 +1,9 @@
 /**
  * AI gateway: the only place the app talks to a language model.
  *
- * - Providers: OpenAI (hosted) and Ollama (self-hosted, e.g. NVIDIA DGX Spark),
- *   selected with AI_PROVIDER, with an optional AI_FALLBACK_PROVIDER.
+ * - Providers: "dgx" (self-hosted models on the NVIDIA DGX Spark, reached with
+ *   DGX_BASE_URL + DGX_API_KEY) and "openai" (hosted), selected with AI_PROVIDER, with
+ *   an optional AI_FALLBACK_PROVIDER.
  * - Tasks, not models: callers ask for a task ("scoring", "generation", "summary",
  *   "coding") and each provider maps it to its own model.
  * - Failover: when a provider has an outage (unreachable, key rejected, model missing,
@@ -17,14 +18,17 @@ const env = require("../../config/env");
 const { AiError } = require("./errors");
 const { createLimiter } = require("./limiter");
 const openai = require("./providers/openai");
-const ollama = require("./providers/ollama");
+const dgx = require("./providers/dgx");
 
 const TASKS = ["scoring", "generation", "summary", "coding"];
 
 const providers = {
+  dgx: dgx.create(env.ai.dgx),
   openai: openai.create(env.ai.openai),
-  ollama: ollama.create(env.ai.ollama),
 };
+if (!env.isTest && [env.ai.provider, env.ai.fallback].includes("dgx")) {
+  providers.dgx.warnings.forEach((w) => console.warn(`[security] ${w}`));
+}
 const limiters = Object.fromEntries(Object.values(providers).map((p) => [p.name, createLimiter(p.maxConcurrent)]));
 const context = new AsyncLocalStorage();
 
@@ -70,10 +74,10 @@ function recordUsage(name, model, usage) {
 
 // One provider call, with a single retry when the model returns unusable JSON
 // (self-hosted models occasionally do).
-async function callJson(p, model, opts) {
+async function callJson(p, task, model, opts) {
   for (let attempt = 0; ; attempt++) {
     // eslint-disable-next-line no-await-in-loop
-    const out = await limiters[p.name].run(() => p.chat({ model, ...opts }), { interactive: opts.interactive });
+    const out = await limiters[p.name].run(() => p.chat({ task, model, ...opts }), { interactive: opts.interactive });
     recordUsage(p.name, model, out.usage);
     try {
       return parseJson(out.content);
@@ -86,7 +90,7 @@ async function callJson(p, model, opts) {
         {
           provider: p.name,
           reason: "bad_response",
-          hint: out.truncated && p.name === "ollama" ? "Raise OLLAMA_REASONING_TOKENS or set OLLAMA_THINK=low in backend/.env." : null,
+          hint: out.truncated && p.name === "dgx" ? "Raise DGX_REASONING_TOKENS or set DGX_THINK=low in backend/.env." : null,
         }
       );
     }
@@ -114,7 +118,7 @@ async function chatJson(task, { system, user, maxTokens = 1024, temperature = 0.
     const model = p.models[task];
     try {
       // eslint-disable-next-line no-await-in-loop
-      const data = await callJson(p, model, { system, user, maxTokens, temperature, interactive });
+      const data = await callJson(p, task, model, { system, user, maxTokens, temperature, interactive });
       aiStatus.recordSuccess(p.name, model);
       return data;
     } catch (err) {
@@ -158,6 +162,7 @@ const describe = () => ({
   provider: env.ai.provider,
   fallback: env.ai.fallback,
   providers: chain().map((n) => ({ ...providers[n].describe(), limiter: limiters[n].stats() })),
+  vision: require("./vision").describe(),
 });
 
 module.exports = {

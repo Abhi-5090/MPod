@@ -60,7 +60,7 @@ function CodingInterview({ session, client, onFinish }) {
   const startedAt = useRef(Date.now());
   const finished = useRef(false);
   const advancing = useRef(false);
-  const face = useFaceTracking(true);
+  const face = useFaceTracking(true, { client, config: session.face_analysis });
   const paused = face.status === "denied" || Boolean(fatal);
 
   const fieldsRef = useRef({});

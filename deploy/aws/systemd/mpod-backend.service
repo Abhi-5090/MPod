@@ -7,15 +7,15 @@
 
 [Unit]
 Description=mPod backend API
-After=network-online.target mongod.service ollama.service
-Wants=network-online.target mongod.service ollama.service
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=mpod
 Group=mpod
 WorkingDirectory=/opt/mpod/backend
-# Everything else (database, secrets, AI settings) is read from /opt/mpod/backend/.env
+# Everything else (database, secrets, DGX Spark addresses and keys) is read from /opt/mpod/backend/.env
 Environment=NODE_ENV=production
 ExecStart=/usr/bin/node app.js
 Restart=always

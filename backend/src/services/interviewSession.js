@@ -11,6 +11,7 @@ const CodingQuestion = require("../models/codingQuestion");
 const LiteInterviewQuestion = require("../models/liteInterviewQuestion");
 const aiStatus = require("./aiStatus");
 const evaluation = require("./evaluation");
+const vision = require("./ai/vision");
 const { normaliseType, modelFor, tenantOfInterview } = require("./interviewModels");
 const { HttpError, badRequest, forbidden, notFound, conflict, isObjectId, escapeRegex } = require("../lib/http");
 
@@ -329,6 +330,8 @@ async function startAttempt({ type: rawType, interviewId, principal }) {
     interview: await interviewSummary(type, doc),
     questions: doc.issued_questions.map(publicQuestion),
     answers: publicAnswers(doc),
+    // Where the camera model runs: on the DGX Spark ("server") or in the browser.
+    face_analysis: vision.clientConfig(),
   };
 }
 
@@ -460,6 +463,24 @@ async function checkIdea({ type, interviewId, token, body }) {
   return { accuracy, attempts, attempts_left: Math.max(0, MAX_IDEA_CHECKS - attempts) };
 }
 
+/**
+ * Forwards one camera frame of an open attempt to the DGX vision model. The frame is
+ * not stored. 503 {unavailable: true} tells the browser to run the model itself.
+ */
+async function analyzeFaceFrame({ type, interviewId, token, body }) {
+  const { doc } = await loadByToken({ type, interviewId, token });
+  assertOpenForAnswers(doc);
+  const problem = vision.validateImage(body.image);
+  if (problem) throw badRequest(problem);
+  if (!vision.enabled()) throw new HttpError(503, "Camera analysis runs in the browser.", { unavailable: true });
+  try {
+    return await vision.analyzeFrame(String(body.image).replace(/^data:image\/(jpeg|png);base64,/, ""));
+  } catch (err) {
+    if (err.outage) aiStatus.recheckSoon(); // so camera analysis moves back to the DGX quickly
+    throw new HttpError(503, "Camera analysis is unavailable right now.", { unavailable: true });
+  }
+}
+
 // Only known numeric/short fields from the browser's face tracking are stored.
 function sanitiseEmotions(e) {
   if (!e || typeof e !== "object") return undefined;
@@ -476,6 +497,8 @@ function sanitiseEmotions(e) {
     time_straight: str(src.time_straight),
     time_left: str(src.time_left),
     time_right: str(src.time_right),
+    // where the camera model ran: server (DGX Spark), browser, or mixed
+    analysis: ["server", "browser", "mixed"].includes(src.analysis) ? src.analysis : undefined,
     emotions: {
       angry: num(em.angry),
       disgust: num(em.disgust),
@@ -566,6 +589,7 @@ async function findKioskInterview({ rollNo, device }) {
 }
 
 module.exports = {
+  analyzeFaceFrame,
   startAttempt,
   saveAnswer,
   checkIdea,

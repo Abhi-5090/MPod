@@ -4,7 +4,7 @@
  * Uses a built-in set of answers of known quality; does not touch the database.
  *
  *   npm run ai:calibrate                               # every configured provider
- *   npm run ai:calibrate -- --providers=openai,ollama --runs=3
+ *   npm run ai:calibrate -- --providers=openai,dgx --runs=3
  *
  * Reports per provider: how many scores fall in the expected band, the spread between
  * repeated runs (consistency), the average time per answer, and the average difference

@@ -30,6 +30,13 @@ const analyzeIdea = asyncHandler(async (req, res) => {
   return res.status(200).json(result);
 });
 
+/** POST /interview-session/face-frame { image } — camera frame for the DGX vision model. */
+const faceFrame = asyncHandler(async (req, res) => {
+  const b = req.body || {};
+  const result = await session.analyzeFaceFrame({ type: b.interview_type, interviewId: b.interview_id, token: tokenOf(req), body: b });
+  return res.status(200).json(result);
+});
+
 /** POST /interview-session/submit — idempotent; evaluation runs in the background. */
 const submit = asyncHandler(async (req, res) => {
   const b = req.body || {};
@@ -63,4 +70,4 @@ const retryEvaluation = asyncHandler(async (req, res) => {
   return res.status(200).json({ message: "Evaluation queued again" });
 });
 
-module.exports = { start, answer, analyzeIdea, submit, status, retryEvaluation };
+module.exports = { start, answer, analyzeIdea, faceFrame, submit, status, retryEvaluation };

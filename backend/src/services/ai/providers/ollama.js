@@ -1,22 +1,22 @@
 /**
- * Ollama adapter (self-hosted models, e.g. on an NVIDIA DGX Spark).
+ * Ollama native-API adapter (self-hosted models on the DGX Spark, reached directly or
+ * through the API-key gateway in deploy/dgx-spark/gateway).
  *
  * Uses Ollama's native API rather than its OpenAI-compatible endpoint, because only the
  * native API lets us set the context window (num_ctx), the output budget (num_predict),
  * how long models stay in GPU memory (keep_alive) and reasoning ("think") per request.
  *
  * Reasoning ("thinking") models such as gpt-oss and qwen3 spend output tokens on
- * thinking before they answer. With OLLAMA_THINK=auto (default):
+ * thinking before they answer. With DGX_THINK=auto (default):
  *  - gpt-oss models think at "low" effort (they can't switch thinking off),
  *  - other thinking-capable models have thinking switched off (the tasks are short JSON),
  *  - models without thinking get no "think" field.
- * Thinking models also get OLLAMA_REASONING_TOKENS extra output tokens so the JSON
+ * Thinking models also get DGX_REASONING_TOKENS extra output tokens so the JSON
  * answer isn't cut off.
  */
 const { AiError } = require("../errors");
 
-const NAME = "ollama";
-const LABEL = "Ollama";
+const DEFAULT_WHO = { name: "dgx", label: "DGX Spark", keyVar: "DGX_API_KEY", urlVar: "DGX_BASE_URL" };
 const CAPS_TTL_MS = 10 * 60 * 1000;
 const RETRY_DELAYS_MS = [1000, 3000];
 const LEVELS = ["low", "medium", "high"];
@@ -24,35 +24,39 @@ const LEVELS = ["low", "medium", "high"];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const isGptOss = (model) => /^gpt-oss/i.test(String(model));
 
-function create(cfg, { fetchImpl } = {}) {
+function create(cfg, { fetchImpl, who = DEFAULT_WHO } = {}) {
+  const NAME = who.name;
   const doFetch = fetchImpl || ((...a) => fetch(...a));
   const caps = new Map(); // model -> { list, at }
 
   const keepAlive = /^-?\d+$/.test(String(cfg.keepAlive)) ? Number(cfg.keepAlive) : cfg.keepAlive;
-  const pullHint = (model) => `On the AI server run: ollama pull ${model}`;
+  const pullHint = (model) => `On the ${who.label} run: ollama pull ${model}`;
 
   function toAiError(err, { model, timeoutMs } = {}) {
     if (err instanceof AiError) return err;
     const msg = String((err && err.message) || "");
     const cause = err && err.cause;
     if (err && (err.name === "TimeoutError" || err.name === "AbortError")) {
-      return new AiError(`Ollama did not answer within ${Math.round((timeoutMs || cfg.timeoutMs) / 1000)} s (server busy or model loading).`, {
+      return new AiError(`${who.label} did not answer within ${Math.round((timeoutMs || cfg.timeoutMs) / 1000)} s (server busy or model loading).`, {
         provider: NAME,
         reason: "timeout",
-        hint: "The GPU server is overloaded: lower EVALUATION_CONCURRENCY, or raise OLLAMA_NUM_PARALLEL on the AI server.",
+        hint: `The GPU server is overloaded: lower EVALUATION_CONCURRENCY, or raise OLLAMA_NUM_PARALLEL on the ${who.label}.`,
         cause: err,
       });
     }
     const code = cause && cause.code;
     if (/fetch failed|ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ECONNRESET|EAI_AGAIN|socket/i.test(`${msg} ${code || ""}`)) {
-      return new AiError(`Cannot reach Ollama at ${cfg.baseURL}.`, {
+      const tls = /certificate|self.signed|CERT_|UNABLE_TO_VERIFY/i.test(`${msg} ${code || ""} ${(cause && cause.message) || ""}`);
+      return new AiError(`Cannot reach ${who.label} at ${cfg.baseURL}${tls ? " (TLS certificate not trusted)" : ""}.`, {
         provider: NAME,
         reason: "network",
-        hint: "Start Ollama on the AI server (sudo systemctl start ollama) and check OLLAMA_BASE_URL in backend/.env.",
+        hint: tls
+          ? "Use a certificate from a public CA on the gateway, or set NODE_EXTRA_CA_CERTS to the gateway's CA file."
+          : `Check ${who.urlVar} in backend/.env, that the ${who.label} is on and reachable, and that Ollama and the gateway are running there (sudo systemctl status ollama nginx).`,
         cause: err,
       });
     }
-    return new AiError(msg.slice(0, 200) || "Ollama request failed.", { provider: NAME, reason: "error", cause: err, model });
+    return new AiError(msg.slice(0, 200) || `${who.label} request failed.`, { provider: NAME, reason: "error", cause: err });
   }
 
   /** Maps a non-2xx Ollama response to an AiError. */
@@ -60,24 +64,22 @@ function create(cfg, { fetchImpl } = {}) {
     const text = String((body && body.error) || body || "").slice(0, 300);
     const make = (reason, message, hint) => new AiError(message, { provider: NAME, reason, status, hint });
     if (status === 404 || /not found|try pulling/i.test(text)) {
-      const e = make("model_missing", `Ollama model "${model}" is not installed.`, pullHint(model));
-      e.models = [model];
-      return e;
+      return new AiError(`${who.label} model "${model}" is not installed.`, { provider: NAME, reason: "model_missing", status, hint: pullHint(model), models: [model] });
     }
     if (status === 401 || status === 403) {
-      return make("auth", `Ollama rejected the request (${status}).`, "Check OLLAMA_API_KEY in backend/.env.");
+      return make("auth", `${who.label} rejected the API key (${status}).`, `Check ${who.keyVar} in backend/.env: it must be one of the keys configured on the ${who.label} gateway.`);
     }
     if (status === 429 || status === 503) {
-      return make("overloaded", `Ollama is busy (${status}).`, "Raise OLLAMA_NUM_PARALLEL on the AI server or lower EVALUATION_CONCURRENCY.");
+      return make("overloaded", `${who.label} is busy (${status}).`, `Raise OLLAMA_NUM_PARALLEL on the ${who.label} or lower EVALUATION_CONCURRENCY.`);
     }
     if (/memory|out of memory|insufficient/i.test(text)) {
-      return make("provider", `Ollama could not load "${model}": ${text}`, "Use smaller models or lower OLLAMA_MAX_LOADED_MODELS on the AI server.");
+      return make("provider", `${who.label} could not load "${model}": ${text}`, `Use smaller models or lower OLLAMA_MAX_LOADED_MODELS on the ${who.label}.`);
     }
     if (/does not support thinking/i.test(text)) {
-      return make("error", `Ollama model "${model}" does not support thinking.`, "Set OLLAMA_THINK=auto in backend/.env.");
+      return make("error", `${who.label} model "${model}" does not support thinking.`, "Set DGX_THINK=auto in backend/.env.");
     }
-    if (status >= 500) return make("provider", `Ollama server error (${status}): ${text}`);
-    return make("error", `Ollama rejected the request (${status}): ${text}`);
+    if (status >= 500) return make("provider", `${who.label} server error (${status}): ${text}`);
+    return make("error", `${who.label} rejected the request (${status}): ${text}`);
   }
 
   async function request(method, path, body, { timeoutMs = cfg.timeoutMs, model } = {}) {
@@ -196,10 +198,10 @@ function create(cfg, { fetchImpl } = {}) {
       }
     }
     if (missing.length) {
-      throw new AiError(`Ollama model${missing.length > 1 ? "s" : ""} not installed: ${missing.join(", ")}.`, {
+      throw new AiError(`${who.label} model${missing.length > 1 ? "s" : ""} not installed: ${missing.join(", ")}.`, {
         provider: NAME,
         reason: "model_missing",
-        hint: `On the AI server run: ${missing.map((m) => `ollama pull ${m}`).join(" && ")}`,
+        hint: `On the ${who.label} run: ${missing.map((m) => `ollama pull ${m}`).join(" && ")}`,
         models: missing,
       });
     }
@@ -230,15 +232,17 @@ function create(cfg, { fetchImpl } = {}) {
 
   return {
     name: NAME,
-    label: LABEL,
+    label: who.label,
+    protocol: "ollama",
     models: cfg.models,
     maxConcurrent: cfg.maxConcurrent,
     chat,
     health,
     preload,
-    describe: () => ({ name: NAME, endpoint: cfg.baseURL, models: cfg.models, num_ctx: cfg.numCtx, think: cfg.think }),
+    describe: () => ({ name: NAME, protocol: "ollama", endpoint: cfg.baseURL, models: cfg.models, num_ctx: cfg.numCtx, think: cfg.think }),
+    toAiError,
     _thinkFor: thinkFor,
   };
 }
 
-module.exports = { create, NAME, LABEL };
+module.exports = { create, isGptOss, LEVELS };

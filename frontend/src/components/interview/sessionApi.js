@@ -17,6 +17,9 @@ export function createSessionClient(session, { rememberToken = false } = {}) {
       api.post("interview-session/answer", { ...base, question_id: questionId, ...fields }, { headers, skipAuthRedirect: true }),
     analyzeIdea: (questionId, idea) =>
       api.post("interview-session/analyze-idea", { ...base, question_id: questionId, idea }, { headers, skipAuthRedirect: true }),
+    // Camera frame for the face model on the DGX Spark (base64 JPEG); small timeout, no retries.
+    faceFrame: (image) =>
+      api.post("interview-session/face-frame", { ...base, image }, { headers, skipAuthRedirect: true, timeout: 8000 }),
     submit: (emotions) =>
       api.post("interview-session/submit", { ...base, ...(emotions ? { emotions } : {}) }, { headers, skipAuthRedirect: true }),
     status: () =>

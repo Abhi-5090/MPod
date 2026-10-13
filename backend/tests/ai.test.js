@@ -1,8 +1,10 @@
-// AI gateway: Ollama adapter, failover between providers, status, limiter, usage tracking.
+// AI gateway: DGX Spark provider (Ollama and OpenAI-compatible endpoints), failover,
+// status, limiter, usage tracking, camera (vision) service.
 const env = require("../src/config/env");
 const ai = require("../src/services/ai");
 const aiStatus = require("../src/services/aiStatus");
 const ollama = require("../src/services/ai/providers/ollama");
+const dgx = require("../src/services/ai/providers/dgx");
 const { AiError } = require("../src/services/ai/errors");
 const { createLimiter } = require("../src/services/ai/limiter");
 
@@ -49,13 +51,13 @@ function fakeOllama({ installed = Object.keys(CAPS), reply = () => ({ accuracy: 
   return { fetchImpl, calls };
 }
 
-const cfg = (over = {}) => ({ ...env.ai.ollama, preload: false, ...over });
+const cfg = (over = {}) => ({ ...env.ai.dgx, preload: false, ...over });
 const chatCalls = (calls) => calls.filter((c) => c.path === "/api/chat");
 
 describe("Ollama adapter", () => {
   test("sends a native JSON chat request with context size, output budget and keep-alive", async () => {
     const { fetchImpl, calls } = fakeOllama();
-    const p = ollama.create(cfg({ models: { ...env.ai.ollama.models, coding: "qwen3-coder:30b" } }), { fetchImpl });
+    const p = ollama.create(cfg({ models: { ...env.ai.dgx.models, coding: "qwen3-coder:30b" } }), { fetchImpl });
     const out = await p.chat({ model: "qwen3-coder:30b", system: "s", user: "u", maxTokens: 300, temperature: 0.2 });
     expect(JSON.parse(out.content)).toEqual({ accuracy: 80 });
     expect(out.usage).toMatchObject({ prompt_tokens: 100, completion_tokens: 20 });
@@ -76,7 +78,7 @@ describe("Ollama adapter", () => {
     await p.chat({ model: "qwen3:32b", system: "s", user: "u", maxTokens: 100, temperature: 0 });
     const [oss, qwen] = chatCalls(calls).map((c) => c.body);
     expect(oss.think).toBe("low");
-    expect(oss.options.num_predict).toBe(100 + env.ai.ollama.reasoningTokens);
+    expect(oss.options.num_predict).toBe(100 + env.ai.dgx.reasoningTokens);
     expect(qwen.think).toBe(false);
     expect(qwen.options.num_predict).toBe(100);
   });
@@ -105,7 +107,7 @@ describe("Ollama adapter", () => {
     const err = await p.chat({ model: "gpt-oss:20b", system: "s", user: "u", maxTokens: 10, interactive: true }).catch((e) => e);
     expect(err.reason).toBe("network");
     expect(err.outage).toBe(true);
-    expect(err.hint).toMatch(/systemctl start ollama/);
+    expect(err.hint).toMatch(/systemctl status ollama/);
   });
 
   test("a request that takes too long is a timeout outage", async () => {
@@ -153,7 +155,7 @@ describe("Ollama adapter", () => {
 });
 
 describe("AI gateway", () => {
-  const original = { provider: env.ai.provider, fallback: env.ai.fallback, ollama: ai.providers.ollama };
+  const original = { provider: env.ai.provider, fallback: env.ai.fallback, dgx: ai.providers.dgx };
   const openaiCalls = [];
   const useOpenAiFake = (content = { accuracy: 55 }) =>
     ai.providers.openai._setClient({
@@ -169,7 +171,7 @@ describe("AI gateway", () => {
   const setup = (provider, fallback, fake) => {
     env.ai.provider = provider;
     env.ai.fallback = fallback;
-    ai.providers.ollama = ollama.create(cfg(), { fetchImpl: fake.fetchImpl });
+    ai.providers.dgx = dgx.create(cfg(), { fetchImpl: fake.fetchImpl });
     aiStatus._reset();
   };
 
@@ -179,29 +181,29 @@ describe("AI gateway", () => {
   });
   afterAll(() => {
     Object.assign(env.ai, { provider: original.provider, fallback: original.fallback });
-    ai.providers.ollama = original.ollama;
+    ai.providers.dgx = original.dgx;
     aiStatus._reset();
   });
 
-  test("uses Ollama with the task's model when it is the primary provider", async () => {
+  test("uses the DGX Spark with the task's model when it is the primary provider", async () => {
     const fake = fakeOllama();
-    setup("ollama", "none", fake);
+    setup("dgx", "none", fake);
     const data = await ai.chatJson("scoring", { system: "s", user: "u", maxTokens: 50 });
     expect(data.accuracy).toBe(80);
-    expect(chatCalls(fake.calls)[0].body.model).toBe(env.ai.ollama.models.scoring);
+    expect(chatCalls(fake.calls)[0].body.model).toBe(env.ai.dgx.models.scoring);
     expect(openaiCalls).toHaveLength(0);
   });
 
-  test("fails over to OpenAI while Ollama is down, then skips Ollama during the cool-down", async () => {
+  test("fails over to OpenAI while the DGX Spark is down, then skips it during the cool-down", async () => {
     const fake = fakeOllama({ down: true });
-    setup("ollama", "openai", fake);
+    setup("dgx", "openai", fake);
     const first = await ai.chatJson("summary", { system: "s", user: "u" });
     expect(first.accuracy).toBe(55);
     expect(openaiCalls[0].model).toBe(env.ai.openai.models.summary);
 
     const st = aiStatus.getStatus();
-    expect(st).toMatchObject({ available: true, degraded: true, provider: "ollama", serving: "openai", fallback: "openai" });
-    expect(st.message).toMatch(/Ollama: Cannot reach Ollama/);
+    expect(st).toMatchObject({ available: true, degraded: true, provider: "dgx", serving: "openai", fallback: "openai" });
+    expect(st.message).toMatch(/DGX Spark: Cannot reach DGX Spark/);
 
     const before = fake.calls.length;
     await ai.chatJson("summary", { system: "s", user: "u" });
@@ -210,18 +212,18 @@ describe("AI gateway", () => {
   });
 
   test("when every provider is down the outage error is thrown", async () => {
-    setup("ollama", "none", fakeOllama({ down: true }));
+    setup("dgx", "none", fakeOllama({ down: true }));
     const err = await ai.chatJson("scoring", { system: "s", user: "u" }).catch((e) => e);
     expect(err.reason).toBe("network");
     expect(aiStatus.isOutage(err)).toBe(true);
     const st = aiStatus.getStatus();
     expect(st.available).toBe(false);
-    expect(st.hint).toMatch(/systemctl start ollama/);
+    expect(st.hint).toMatch(/systemctl status ollama/);
   });
 
   test("a bad answer from one request does not fail over or mark the provider down", async () => {
     const fake = fakeOllama({ reply: () => "this is not json" });
-    setup("ollama", "openai", fake);
+    setup("dgx", "openai", fake);
     const err = await ai.chatJson("scoring", { system: "s", user: "u" }).catch((e) => e);
     expect(err.reason).toBe("bad_response");
     expect(aiStatus.isOutage(err)).toBe(false);
@@ -231,14 +233,14 @@ describe("AI gateway", () => {
   });
 
   test("reasoning text and prose around the JSON are tolerated", async () => {
-    setup("ollama", "none", fakeOllama({ reply: () => '<think>let me see</think>\nHere you go: {"accuracy": 91}\nDone.' }));
+    setup("dgx", "none", fakeOllama({ reply: () => '<think>let me see</think>\nHere you go: {"accuracy": 91}\nDone.' }));
     expect((await ai.chatJson("scoring", { system: "s", user: "u" })).accuracy).toBe(91);
     expect(ai.parseJson('```json\n{"a":1}\n```')).toEqual({ a: 1 });
     expect(() => ai.parseJson("[1,2]")).toThrow();
   });
 
   test("track() records which provider and model produced the work", async () => {
-    setup("ollama", "none", fakeOllama());
+    setup("dgx", "none", fakeOllama());
     const { value, usage } = await ai.track(async () => {
       await ai.chatJson("scoring", { system: "s", user: "u" });
       await ai.chatJson("coding", { system: "s", user: "u" });
@@ -246,19 +248,26 @@ describe("AI gateway", () => {
     });
     expect(value).toBe("done");
     const summary = ai.usageSummary(usage);
-    expect(summary.providers).toEqual(["ollama"]);
-    expect(summary.models.sort()).toEqual([`ollama:${env.ai.ollama.models.coding}`, `ollama:${env.ai.ollama.models.scoring}`].sort());
+    expect(summary.providers).toEqual(["dgx"]);
+    expect(summary.models.sort()).toEqual([`dgx:${env.ai.dgx.models.coding}`, `dgx:${env.ai.dgx.models.scoring}`].sort());
     expect(summary).toMatchObject({ calls: 2, prompt_tokens: 200, completion_tokens: 40 });
   });
 
   test("withProvider() forces one provider", async () => {
-    setup("ollama", "openai", fakeOllama());
+    setup("dgx", "openai", fakeOllama());
     const data = await ai.withProvider("openai", () => ai.chatJson("scoring", { system: "s", user: "u" }));
     expect(data.accuracy).toBe(55);
   });
 
-  test("the scoring functions work unchanged on Ollama", async () => {
-    setup("ollama", "none", fakeOllama({ reply: () => ({ accuracy: 77, analysis: "good", improvements: "more" }) }));
+  test("questions returned as objects are accepted", async () => {
+    setup("dgx", "none", fakeOllama({ reply: () => ({ questions: [{ question: "What is a class?" }, { text: "What is an object?" }, "3. What is a method?"] }) }));
+    const evaluation = require("../src/services/evaluation");
+    const qs = await evaluation.generateTechnologyQuestions({ technologyName: "Java", level: "easy", count: 3, moduleTopics: ["OOP: Classes"] });
+    expect(qs).toEqual(["What is a class?", "What is an object?", "What is a method?"]);
+  });
+
+  test("the scoring functions work unchanged on the DGX Spark", async () => {
+    setup("dgx", "none", fakeOllama({ reply: () => ({ accuracy: 77, analysis: "good", improvements: "more" }) }));
     const evaluation = require("../src/services/evaluation");
     const r = await evaluation.scoreVerbalAnswer("What is a class?", "A blueprint for objects", 30);
     expect(r).toMatchObject({ accuracy: 77, analysis: "good", confidence_level: "high" });
@@ -266,37 +275,37 @@ describe("AI gateway", () => {
 
   test("a missing model affects only the tasks that use it", async () => {
     // only the scoring model is missing
-    const installed = Object.keys(CAPS).filter((m) => m !== env.ai.ollama.models.scoring);
+    const installed = Object.keys(CAPS).filter((m) => m !== env.ai.dgx.models.scoring);
     const fake = fakeOllama({ installed });
-    setup("ollama", "openai", fake);
+    setup("dgx", "openai", fake);
     expect((await ai.chatJson("scoring", { system: "s", user: "u" })).accuracy).toBe(55); // OpenAI
     expect((await ai.chatJson("summary", { system: "s", user: "u" })).accuracy).toBe(80); // still Ollama
     const before = chatCalls(fake.calls).length;
     await ai.chatJson("scoring", { system: "s", user: "u" });
     expect(chatCalls(fake.calls).length).toBe(before); // missing model skipped during the cool-down
     const st = aiStatus.getStatus();
-    expect(st).toMatchObject({ available: true, degraded: true, partial: true, serving: "ollama", reason: "model_missing" });
-    expect(st.hint).toBe(`On the AI server run: ollama pull ${env.ai.ollama.models.scoring}`);
-    expect(st.providers[0].missing_models).toEqual([env.ai.ollama.models.scoring]);
+    expect(st).toMatchObject({ available: true, degraded: true, partial: true, serving: "dgx", reason: "model_missing" });
+    expect(st.hint).toBe(`On the DGX Spark run: ollama pull ${env.ai.dgx.models.scoring}`);
+    expect(st.providers[0].missing_models).toEqual([env.ai.dgx.models.scoring]);
   });
 
   test("a missing model with no fallback leaves the other tasks working", async () => {
-    setup("ollama", "none", fakeOllama({ installed: [env.ai.ollama.models.generation] }));
+    setup("dgx", "none", fakeOllama({ installed: [env.ai.dgx.models.generation] }));
     const st = await aiStatus.check();
     aiStatus.stop();
     expect(st).toMatchObject({ available: true, degraded: true, partial: true });
-    expect(st.message).toMatch(new RegExp(env.ai.ollama.models.scoring));
+    expect(st.message).toMatch(new RegExp(env.ai.dgx.models.scoring));
     expect((await ai.chatJson("generation", { system: "s", user: "u" })).accuracy).toBe(80);
     const err = await ai.chatJson("scoring", { system: "s", user: "u" }).catch((e) => e);
     expect(err.reason).toBe("model_missing");
   });
 
   test("the health check reports each provider separately", async () => {
-    setup("ollama", "openai", fakeOllama({ installed: ["gpt-oss:20b"] }));
+    setup("dgx", "openai", fakeOllama({ installed: ["gpt-oss:20b"] }));
     const st = await aiStatus.check();
     aiStatus.stop();
     const byName = Object.fromEntries(st.providers.map((p) => [p.name, p]));
-    expect(byName.ollama).toMatchObject({ available: true, partial: true, reason: "model_missing" });
+    expect(byName.dgx).toMatchObject({ available: true, partial: true, reason: "model_missing" });
     expect(byName.openai).toMatchObject({ available: true });
     expect(st.degraded).toBe(true);
   });

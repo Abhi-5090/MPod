@@ -31,6 +31,12 @@ module.exports = {
   kioskRegister: make(15, 10, "Too many registration attempts. Please try again later."),
   // Endpoints that call the LLM.
   llm: make(1, 20, "Too many requests. Please slow down.", perPrincipal),
+  // Camera frames for the DGX vision model: about one per second per attempt.
+  faceFrame: make(1, 150, "Too many camera frames.", perPrincipal),
   // Coarse per-IP flood protection; generous because a lab shares one IP.
-  api: make(1, 3000, "Too many requests. Please slow down."),
+  // Camera frames are limited per attempt instead (a full lab sends one per student per second).
+  api: (() => {
+    const limiter = make(1, 3000, "Too many requests. Please slow down.");
+    return (req, res, next) => (req.path === "/interview-session/face-frame" ? next() : limiter(req, res, next));
+  })(),
 };

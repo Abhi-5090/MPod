@@ -39,13 +39,13 @@ The AI generates or selects questions, reads them aloud, captures spoken or type
 | Unit of value | One evaluated interview = one credit |
 | Interview types | **Technology** (AI-generated from a syllabus), **Company** (from a company question bank), **Coding** (from a coding problem bank: idea → code → optimise) |
 | Channels | Student website, campus kiosk, admin portal |
-| AI provider | Pluggable AI gateway: OpenAI (hosted) or Ollama (self-hosted, e.g. NVIDIA DGX Spark), with automatic failover between them (question generation, answer scoring, coding review, idea check) |
+| AI provider | Pluggable AI gateway: self-hosted models on the NVIDIA DGX Spark (`dgx`: URL + API key, Ollama or OpenAI-compatible protocol) or OpenAI (hosted), with automatic failover (question generation, answer scoring, coding review, idea check). Camera model on the DGX Spark, with the browser model as fallback. |
 
 **Three applications in one repository:**
 
 | App | Folder | Tech | Dev URL |
 |---|---|---|---|
-| Backend API | `backend/` | Node.js 20, Express 4, Mongoose 7 (MongoDB replica set), OpenAI SDK + Ollama REST API, Nodemailer | `http://localhost:8002/backend` |
+| Backend API | `backend/` | Node.js 20, Express 4, Mongoose 7 (MongoDB replica set), OpenAI SDK + Ollama REST API (DGX Spark), Nodemailer | `http://localhost:8002/backend` |
 | Student website + kiosk + reports | `frontend/` | React 18, Vite 5, React Router 6, axios, react-speech-recognition, Web Speech TTS, face-api.js, react-to-pdf | `http://localhost:3000` |
 | Admin portal | `Admin/` | React 18, Vite 5, React Router 6 (base `/admin`), Redux (layout only), reactstrap/Bootstrap 5, react-select, flatpickr, MDB/react-bootstrap-table, ApexCharts/Recharts, xlsx | `http://localhost:8003/admin` |
 
@@ -69,7 +69,7 @@ The AI generates or selects questions, reads them aloud, captures spoken or type
                 └───────┬──────────────┬───────────────┬──────────────┘
                         │              │               │
                   MongoDB (replica   AI gateway:     SMTP (Gmail)
-                  set; 17 collections) Ollama/OpenAI OTP & schedule emails
+                  set; 17 collections) DGX/OpenAI   OTP & schedule emails
                         │
                 Local disk: profile photos, technology/module icons,
                 face-api models (served by the API)
@@ -233,7 +233,7 @@ For each problem (the timer is the problem's `time` in minutes):
 2. **Write code** (plain text area with copy/paste blocked).
 3. **Optimise code.**
 
-Camera-based attention tracking (face-api.js) runs in the browser. It warns if the face is missing or more than one person is visible, and sends aggregate emotion and head-pose counts with the submission.
+Camera-based attention tracking: the camera model (face detector, 68 landmarks, 7 expressions) runs on the DGX Spark when `DGX_VISION_URL` is set. The browser sends a 320-px frame about once per second to `POST /interview-session/face-frame`, and the backend forwards it with the key; frames are not stored. Otherwise, or when the service fails, face-api.js runs in the browser. It warns if the face is missing or more than one person is visible, and sends aggregate emotion and head-pose counts (plus which mode was used) with the submission.
 
 ### 5.7 Evaluation pipeline
 - **Technology/company answers:** each one is scored by the AI against a rubric (0–100), returning accuracy, analysis, improvements and confidence. Up to 4 calls run in parallel, with the candidate text fenced as untrusted data. A summary call adds strengths, areas of improvement and 7 skill parameters.
@@ -397,13 +397,14 @@ All content can be read by any staff member (needed for scheduling) and changed 
   - limits concurrent requests per provider, serving interactive calls first;
   - tolerates reasoning text around the JSON and retries invalid JSON once;
   - records provider, model, tokens and time per evaluation (`evaluation_ai`).
-- **Tasks and default models** (OpenAI / Ollama):
+- **Tasks and default models** (OpenAI / DGX Spark):
   - **scoring:** `gpt-4o` / `gpt-oss:120b` (verbal answer scoring)
   - **generation:** `gpt-3.5-turbo` / `gpt-oss:20b` (question generation, OpenAI health check)
   - **summary:** `gpt-3.5-turbo` / `gpt-oss:20b` (overall analysis)
   - **coding:** `gpt-4-turbo` / `qwen3-coder:30b` (idea check, code review, optimisation comparison)
 
-  Models are configurable with `OPENAI_*_MODEL` and `OLLAMA_*_MODEL`. All calls request JSON output. Ollama uses its native API with `num_ctx`, `num_predict`, `keep_alive` and `think` set per request.
+  Models are configurable with `OPENAI_*_MODEL` and `DGX_*_MODEL`. All calls request JSON output.
+- **The DGX provider** reaches the DGX Spark at `DGX_BASE_URL` with `DGX_API_KEY` through the API-key gateway. It speaks Ollama's native API (`num_ctx`, `num_predict`, `keep_alive` and `think` per request) or an OpenAI-compatible API (vLLM, TensorRT-LLM; `reasoning_effort` for gpt-oss, thinking off for Qwen3). Each task can have its own endpoint, key and protocol. Plain HTTP to public addresses is refused in production. The full model list and API contract are in `docs/DGX_MODEL_CONTRACT.md`.
 - **Question generation:** "exactly N questions, single, ≤ 25 words, no code (except the Placements technology)" over shuffled module/topic lists. Timeout 25 s, 1 retry, 2 tries.
 - **Verbal scoring rubric:**
 
@@ -684,7 +685,7 @@ The error is always re-rejected.
 - Calls `GET system-status` on mount and every 5 minutes. "Check again" calls `GET system-status?refresh=1`.
 - Shown when `ai.available` is false (warning). Also shown to platform roles as an info Alert when `ai.degraded` is true (the primary provider is down and the fallback is serving). Errors are ignored.
 - It is a warning Alert with this text: **"AI service unavailable."** `{ai.message}` "Interviews still run: technology questions come from the question bank and syllabus, the coding idea check is skipped, and scores are completed automatically once the AI is back."
-- Platform roles also see "Fix: {ai.hint}": a provider-specific fix from the server (for example the OpenAI key permission, `ollama pull <model>`, or starting the Ollama service). They also get a link button **"Check again"** (shows "Checking..." while running).
+- Platform roles also see "Fix: {ai.hint}": a provider-specific fix from the server (for example the OpenAI key permission, `ollama pull <model>`, or checking the DGX Spark gateway). They also get a link button **"Check again"** (shows "Checking..." while running).
 
 #### Sidebar menu (`config/menu.js`)
 - Groups are filtered by role. Each group is a collapsible MetisMenu entry with an icon from `/admin/dashboard-icons/<icon>`.
@@ -2290,7 +2291,8 @@ MongoDB collections (Mongoose models). Timestamps (`createdAt`, `updatedAt`) exi
 | `JWT_SECRET` | Signs session tokens and the OTP HMAC (≥ 32 random characters recommended) |
 | `AI_PROVIDER`, `AI_FALLBACK_PROVIDER` | `openai` or `ollama`; the fallback (or `none`) is used while the primary is unavailable |
 | `OPENAI_API_KEY`, `OPENAI_BASE_URL` | OpenAI key (needs the `model.request` permission); optional OpenAI-compatible endpoint |
-| `OLLAMA_BASE_URL`, `OLLAMA_*_MODEL`, `OLLAMA_MAX_CONCURRENCY`, `OLLAMA_NUM_CTX`, `OLLAMA_KEEP_ALIVE`, `OLLAMA_THINK`, `OLLAMA_REASONING_TOKENS`, `OLLAMA_PRELOAD`, `OLLAMA_TIMEOUT_MS` | Self-hosted Ollama settings (see DEPLOY_DGX_SPARK.md) |
+| `DGX_BASE_URL`, `DGX_API_KEY`, `DGX_PROTOCOL`, `DGX_*_MODEL`, `DGX_<TASK>_URL/_API_KEY/_PROTOCOL`, `DGX_MAX_CONCURRENCY`, `DGX_NUM_CTX`, `DGX_KEEP_ALIVE`, `DGX_THINK`, `DGX_REASONING_TOKENS`, `DGX_PRELOAD`, `DGX_TIMEOUT_MS`, `DGX_ALLOW_INSECURE` | DGX Spark models (see DEPLOYMENT.md) |
+| `DGX_VISION_URL`, `DGX_VISION_API_KEY`, `DGX_VISION_INTERVAL_MS`, `DGX_VISION_TIMEOUT_MS` | Camera model on the DGX Spark (empty = browser model) |
 | `HOST` | Listen interface (`127.0.0.1` behind a local nginx) |
 | `OPENAI_SCORING_MODEL`, `OPENAI_GENERATION_MODEL`, `OPENAI_SUMMARY_MODEL`, `OPENAI_CODING_MODEL` | Model overrides |
 | `EMAIL_USER`, `EMAIL_PASS` | SMTP (Gmail app password) |
@@ -2348,7 +2350,7 @@ These are factual gaps in the current implementation, useful as input for an enh
 - Interview data is split across three collections with similar schemas; a single interview collection with a type field would simplify the code.
 - Users are keyed by `roll_no` (unique only by convention across colleges); profile photos are stored by roll number globally.
 - Legacy admin pages use older libraries (reactstrap 9, mdbreact, availity validation, react-bootstrap-table); the report pages are large legacy components.
-- OpenAI defaults are older models (configurable). Self-hosted models via Ollama are supported, and `ai:calibrate` compares providers on a small built-in answer set. There's still no structured rubric per question, no large calibration set and no per-question reference answers except bank questions.
+- OpenAI defaults are older models (configurable). Self-hosted models on the DGX Spark are supported, and `ai:calibrate` compares providers on a small built-in answer set. There's still no structured rubric per question, no large calibration set and no per-question reference answers except bank questions.
 - No API documentation (OpenAPI), no metrics, tracing or alerting, no CI pipeline, no front-end tests.
 - GDPR/DPDP features are missing: consent capture for camera/voice, data retention policies, data export/delete requests.
 - Admin UI inconsistencies (question-count limits, edit pages without student search, the Company Interviews list not showing the Provisional badge, hidden delete buttons) are listed in section 8.6.

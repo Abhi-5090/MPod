@@ -12,6 +12,7 @@ const Router = express.Router();
 Router.post("/api/interview-session/start", requireStudent(), rl.llm, Session.start);
 Router.post("/api/interview-session/answer", Session.answer);
 Router.post("/api/interview-session/analyze-idea", rl.llm, Session.analyzeIdea);
+Router.post("/api/interview-session/face-frame", rl.faceFrame, Session.faceFrame);
 Router.post("/api/interview-session/submit", Session.submit);
 Router.get("/api/interview-session/status", Session.status);
 Router.post("/api/interview-session/retry-evaluation", requireStaff(CAN.scheduleInterviews), Session.retryEvaluation);

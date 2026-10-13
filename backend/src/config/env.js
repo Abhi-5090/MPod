@@ -20,7 +20,17 @@ if (missing.length && process.env.NODE_ENV !== "test") {
 const isProd = process.env.NODE_ENV === "production";
 const bool = (v, dflt) => (v == null || v === "" ? dflt : String(v).toLowerCase() === "true");
 const int = (v, dflt) => (v == null || v === "" || Number.isNaN(Number(v)) ? dflt : Number(v));
+// DGX_* settings; OLLAMA_* names from the first self-hosting release still work.
+const dgxVar = (name) => {
+  const v = process.env[`DGX_${name}`];
+  return v != null && v !== "" ? v : process.env[`OLLAMA_${name}`];
+};
 const lower = (v, dflt) => String(v == null || String(v).trim() === "" ? dflt : v).trim().toLowerCase();
+// "ollama" is the old name of the self-hosted provider.
+const providerName = (v, dflt) => {
+  const n = lower(v, dflt);
+  return n === "ollama" ? "dgx" : n;
+};
 
 // Same origins the app allowed before, plus the local Admin dev port.
 // In production set CORS_ORIGINS explicitly (e.g. "https://mpod.ai").
@@ -57,15 +67,19 @@ const env = {
   submitGraceMinutes: int(process.env.INTERVIEW_SUBMIT_GRACE_MINUTES, 10),
   evalConcurrency: int(process.env.EVALUATION_CONCURRENCY, 3),
   llmParallelCalls: int(process.env.LLM_PARALLEL_CALLS, 4),
-  // AI providers. AI_PROVIDER serves every request; AI_FALLBACK_PROVIDER (optional)
-  // takes over while the primary is unavailable. Each task uses its own model.
+  // AI providers:
+  //  - "dgx":    your self-hosted models on the NVIDIA DGX Spark (DGX_BASE_URL + DGX_API_KEY)
+  //  - "openai": OpenAI's hosted API
+  // AI_PROVIDER serves every request; AI_FALLBACK_PROVIDER (optional) takes over while
+  // the primary is unavailable. Each task (scoring, generation, summary, coding) uses its
+  // own model. Without AI_PROVIDER, "dgx" is used when DGX_BASE_URL is set.
   ai: {
-    provider: lower(process.env.AI_PROVIDER, "openai"),
-    fallback: lower(process.env.AI_FALLBACK_PROVIDER, "none"),
+    provider: providerName(process.env.AI_PROVIDER, dgxVar("BASE_URL") ? "dgx" : "openai"),
+    fallback: providerName(process.env.AI_FALLBACK_PROVIDER, "none"),
     healthCheckMinutes: int(process.env.AI_HEALTH_CHECK_MINUTES, 10),
     openai: {
       apiKey: (process.env.OPENAI_API_KEY || "").trim(),
-      // Optional: any OpenAI-compatible endpoint (e.g. a vLLM server).
+      // Optional: any OpenAI-compatible endpoint.
       baseURL: (process.env.OPENAI_BASE_URL || "").trim() || undefined,
       timeoutMs: int(process.env.OPENAI_TIMEOUT_MS, 60 * 1000),
       interactiveTimeoutMs: int(process.env.OPENAI_INTERACTIVE_TIMEOUT_MS, 25 * 1000),
@@ -77,29 +91,60 @@ const env = {
         coding: process.env.OPENAI_CODING_MODEL || "gpt-4-turbo",
       },
     },
-    // Self-hosted models (e.g. on an NVIDIA DGX Spark) through Ollama's native API.
-    ollama: {
-      baseURL: (process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434").trim().replace(/\/+$/, ""),
-      // Only needed when Ollama sits behind an authenticating reverse proxy.
-      apiKey: (process.env.OLLAMA_API_KEY || "").trim(),
-      // Local models are slower than the hosted API, and a cold model takes time to load.
-      timeoutMs: int(process.env.OLLAMA_TIMEOUT_MS, 5 * 60 * 1000),
-      interactiveTimeoutMs: int(process.env.OLLAMA_INTERACTIVE_TIMEOUT_MS, 90 * 1000),
-      // Keep at or below the Ollama server's OLLAMA_NUM_PARALLEL.
-      maxConcurrent: int(process.env.OLLAMA_MAX_CONCURRENCY, 4),
-      numCtx: int(process.env.OLLAMA_NUM_CTX, 8192),
-      keepAlive: process.env.OLLAMA_KEEP_ALIVE || "-1",
-      // auto | true | false | low | medium | high (see services/ai/providers/ollama.js)
-      think: lower(process.env.OLLAMA_THINK, "auto"),
+    // Self-hosted models on the DGX Spark (see services/ai/providers/dgx.js).
+    dgx: {
+      label: dgxVar("LABEL") || "DGX Spark",
+      // Public HTTPS address of the DGX Spark API gateway (or http://127.0.0.1:11434 on the Spark itself).
+      baseURL: (dgxVar("BASE_URL") || "http://127.0.0.1:11434").trim().replace(/\/+$/, ""),
+      apiKey: (dgxVar("API_KEY") || "").trim(),
+      // ollama = Ollama native API; openai = OpenAI-compatible API (vLLM, TensorRT-LLM, SGLang)
+      protocol: lower(dgxVar("PROTOCOL"), "ollama"),
+      // Optional per-task endpoint, key and protocol, e.g. DGX_SCORING_URL / DGX_SCORING_API_KEY.
+      endpoints: Object.fromEntries(
+        ["scoring", "generation", "summary", "coding"].map((t) => {
+          const T = t.toUpperCase();
+          return [
+            t,
+            {
+              url: (process.env[`DGX_${T}_URL`] || "").trim() || undefined,
+              apiKey: (process.env[`DGX_${T}_API_KEY`] || "").trim() || undefined,
+              protocol: process.env[`DGX_${T}_PROTOCOL`] ? lower(process.env[`DGX_${T}_PROTOCOL`]) : undefined,
+            },
+          ];
+        })
+      ),
+      // Plain HTTP is refused for public addresses unless this is set.
+      allowInsecure: bool(dgxVar("ALLOW_INSECURE"), false),
+      isProd,
+      // Self-hosted models are slower than the hosted API, and a cold model takes time to load.
+      timeoutMs: int(dgxVar("TIMEOUT_MS"), 5 * 60 * 1000),
+      interactiveTimeoutMs: int(dgxVar("INTERACTIVE_TIMEOUT_MS"), 90 * 1000),
+      // Requests sent to the DGX at once; keep at or below its OLLAMA_NUM_PARALLEL / vLLM capacity.
+      maxConcurrent: int(dgxVar("MAX_CONCURRENCY"), 4),
+      numCtx: int(dgxVar("NUM_CTX"), 8192),
+      keepAlive: dgxVar("KEEP_ALIVE") || "-1",
+      // auto | true | false | low | medium | high
+      think: lower(dgxVar("THINK"), "auto"),
       // Extra output tokens allowed for a reasoning model's thinking.
-      reasoningTokens: int(process.env.OLLAMA_REASONING_TOKENS, 2048),
-      preload: bool(process.env.OLLAMA_PRELOAD, isProd),
+      reasoningTokens: int(dgxVar("REASONING_TOKENS"), 2048),
+      preload: bool(dgxVar("PRELOAD"), isProd),
       models: {
-        scoring: process.env.OLLAMA_SCORING_MODEL || "gpt-oss:120b",
-        generation: process.env.OLLAMA_GENERATION_MODEL || "gpt-oss:20b",
-        summary: process.env.OLLAMA_SUMMARY_MODEL || "gpt-oss:20b",
-        coding: process.env.OLLAMA_CODING_MODEL || "qwen3-coder:30b",
+        scoring: dgxVar("SCORING_MODEL") || "gpt-oss:120b",
+        generation: dgxVar("GENERATION_MODEL") || "gpt-oss:20b",
+        summary: dgxVar("SUMMARY_MODEL") || "gpt-oss:20b",
+        coding: dgxVar("CODING_MODEL") || "qwen3-coder:30b",
       },
+    },
+    // Camera analysis model (face detection, 68 landmarks, 7 expressions) served on the
+    // DGX Spark. Without DGX_VISION_URL the student's browser runs the model itself.
+    vision: {
+      url: (process.env.DGX_VISION_URL || "").trim().replace(/\/+$/, "") || null,
+      apiKey: (process.env.DGX_VISION_API_KEY || dgxVar("API_KEY") || "").trim(),
+      timeoutMs: int(process.env.DGX_VISION_TIMEOUT_MS, 5000),
+      // How often the browser sends a camera frame (ms).
+      intervalMs: int(process.env.DGX_VISION_INTERVAL_MS, 1000),
+      allowInsecure: bool(dgxVar("ALLOW_INSECURE"), false),
+      isProd,
     },
   },
   mail: {
@@ -108,7 +153,7 @@ const env = {
   },
 };
 
-const AI_PROVIDERS = ["openai", "ollama"];
+const AI_PROVIDERS = ["dgx", "openai"];
 if (!AI_PROVIDERS.includes(env.ai.provider)) {
   throw new Error(`AI_PROVIDER must be one of: ${AI_PROVIDERS.join(", ")} (got "${env.ai.provider}").`);
 }

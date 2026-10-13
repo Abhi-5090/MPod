@@ -82,7 +82,7 @@ The password for all of them is `Passw0rd!`.
 | `Port ... is already in use` | An old dev server is still running. Stop it (see above). |
 | `mongod not found` | `brew tap mongodb/brew && brew install mongodb-community`. Until then, dev uses a temporary in-memory database. |
 | Login works, but every page says "Please login" | Make sure you opened the app on `localhost` (not `127.0.0.1`) and started it with `npm run dev`. |
-| Yellow "AI service unavailable" banner, or interviews stuck on "Waiting for AI" | The AI provider can't be used: for OpenAI a missing, wrong, restricted or out-of-quota key; for Ollama the server is not running or a model is not installed. The banner shows the reason and the fix. Fix it, restart the backend, and the waiting interviews are scored automatically. Interviews keep working meanwhile, using bank and template questions. Run `npm run ai:check` to test the setup. |
+| Yellow "AI service unavailable" banner, or interviews stuck on "Waiting for AI" | The AI provider can't be used: for OpenAI a missing, wrong, restricted or out-of-quota key; for the DGX Spark the gateway or model server is down, the key is wrong, or a model is not served. The banner shows the reason and the fix. Fix it, restart the backend, and the waiting interviews are scored automatically. Interviews keep working meanwhile, using bank and template questions. Run `npm run ai:check` to test the setup. |
 | No OTP email arrives | Set `EMAIL_USER` / `EMAIL_PASS` (a Gmail app password) in `backend/.env`. |
 | Voice answer box doesn't appear | Use Chrome and allow the microphone, or click **Type instead**. |
 
@@ -108,19 +108,24 @@ The password for all of them is `Passw0rd!`.
 5. **Kiosks:** register each campus kiosk once at `https://mpod.ai/kiosk-setup`, signed in as that college's admin.
 6. Everyone has to log in again after this release.
 
-To run everything, including the AI models, on an NVIDIA DGX Spark, follow [DEPLOY_DGX_SPARK.md](DEPLOY_DGX_SPARK.md).
+For the production setup (application on AWS, all models on the NVIDIA DGX Spark), follow [DEPLOYMENT.md](DEPLOYMENT.md). The models and the API contract for the DGX Spark are in [docs/DGX_MODEL_CONTRACT.md](docs/DGX_MODEL_CONTRACT.md).
 
 ## AI providers
 
-All AI calls go through one gateway (`backend/src/services/ai/`) and work with either provider:
+All AI calls go through one gateway (`backend/src/services/ai/`):
 
 | Setting | Meaning |
 |---|---|
-| `AI_PROVIDER=openai` | Hosted OpenAI models (default) |
-| `AI_PROVIDER=ollama` | Self-hosted models through Ollama, e.g. on a DGX Spark |
-| `AI_FALLBACK_PROVIDER=openai\|ollama\|none` | Used automatically while the primary is unavailable |
+| `AI_PROVIDER=dgx` | Your models on the DGX Spark: `DGX_BASE_URL` + `DGX_API_KEY`, one model per task (`DGX_*_MODEL`), Ollama or OpenAI-compatible protocol (`DGX_PROTOCOL`) |
+| `AI_PROVIDER=openai` | Hosted OpenAI models |
+| `AI_FALLBACK_PROVIDER=openai\|dgx\|none` | Used automatically while the primary is unavailable |
+| `DGX_VISION_URL` | Camera model on the DGX Spark; without it the students' browsers run the camera model |
 
-To try Ollama locally, install Ollama, pull a model, and put the provider and model settings in `backend/.env.development.local`. For example: `AI_PROVIDER=ollama` plus `OLLAMA_SCORING_MODEL`, `OLLAMA_GENERATION_MODEL`, `OLLAMA_SUMMARY_MODEL` and `OLLAMA_CODING_MODEL`, all set to `qwen2.5-coder:1.5b`. Then run `npm run ai:check`. `npm run ai:calibrate` compares how the providers score the same answers.
+To try it locally with Ollama on your machine, pull a small model and put these in `backend/.env.development.local`:
+- `AI_PROVIDER=dgx`
+- `DGX_SCORING_MODEL`, `DGX_GENERATION_MODEL`, `DGX_SUMMARY_MODEL` and `DGX_CODING_MODEL`, all set to e.g. `qwen2.5-coder:1.5b`
+
+`DGX_BASE_URL` defaults to `http://127.0.0.1:11434`. Then run `npm run ai:check`. `node deploy/dgx-spark/vision/mock-vision-server.js` with `DGX_VISION_URL=http://127.0.0.1:8100` tests the camera path. `npm run ai:calibrate` compares how providers score the same answers.
 
 ## Security model (summary)
 

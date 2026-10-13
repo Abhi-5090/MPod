@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds and (re)starts mPod on the DGX Spark from the checked-out code.
-#   sudo -u mpod /opt/mpod/deploy/dgx-spark/scripts/deploy.sh      # build only
+# Builds and (re)starts mPod on the application server (AWS) from the checked-out code.
+#   sudo -u mpod /opt/mpod/deploy/aws/scripts/deploy.sh      # build only
 #   then: sudo systemctl restart mpod-backend
 # Or, as a user with sudo rights: RESTART=1 ./deploy.sh
 set -euo pipefail

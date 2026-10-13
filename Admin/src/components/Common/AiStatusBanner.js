@@ -31,8 +31,23 @@ const AiStatusBanner = () => {
 
   if (!ai) return null
   const platform = user && isPlatformRole(user.role)
+  const vision = ai.vision || {}
+  // Camera model on the DGX Spark is down: browsers run it themselves, so only platform admins need to know.
+  const visionNote = platform && vision.configured && !vision.available && (
+    <div className="mt-1">
+      <strong>Camera analysis service unavailable;</strong> students&apos; browsers are analysing the camera instead.{" "}
+      {vision.message}
+      {vision.hint ? ` Fix: ${vision.hint}` : ""}
+    </div>
+  )
   // Primary provider down but the fallback is serving: only platform admins need to know.
-  if (ai.available && !(ai.degraded && platform)) return null
+  if (ai.available && !(ai.degraded && platform)) {
+    return visionNote ? (
+      <Alert color="info" className="mb-3">
+        {visionNote}
+      </Alert>
+    ) : null
+  }
 
   const label = (name) => ((ai.providers || []).find((p) => p.name === name) || {}).label || name
   const checkAgain = platform && (
@@ -64,6 +79,7 @@ const AiStatusBanner = () => {
         {ai.message}
         {fix}
         {checkAgain}
+        {visionNote}
       </Alert>
     )
   }
@@ -75,6 +91,7 @@ const AiStatusBanner = () => {
       skipped, and scores are completed automatically once the AI is back.
       {fix}
       {checkAgain}
+      {visionNote}
     </Alert>
   )
 }

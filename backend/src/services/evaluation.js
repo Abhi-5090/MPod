@@ -44,6 +44,16 @@ const confidenceLevel = (accuracy) => {
 
 // ---------------------------------------------------------------- question generation
 
+// Some models return [{"question": "..."}] instead of ["..."]; accept both.
+const questionText = (q) => {
+  if (typeof q === "string") return q;
+  if (q && typeof q === "object") {
+    const v = q.question || q.text || q.q || Object.values(q).find((x) => typeof x === "string");
+    return typeof v === "string" ? v : "";
+  }
+  return "";
+};
+
 /** Generates `count` short verbal interview questions for a technology syllabus. */
 async function generateTechnologyQuestions({ technologyName, level, count, moduleTopics }) {
   const isPlacements = technologyName === "Placements";
@@ -73,7 +83,8 @@ Vary the questions across the topics. Session: ${Date.now()}.`;
       interactive: true, // the student is waiting on this call
     });
     const list = (Array.isArray(data.questions) ? data.questions : [])
-      .map((q) => String(q || "").replace(/^\s*\d+[.)]\s*/, "").trim())
+      .map(questionText)
+      .map((q) => q.replace(/^\s*\d+[.)]\s*/, "").trim())
       .filter((q) => q.length > 3);
     if (list.length >= count) return list.slice(0, count);
     if (attempt === 1 && list.length) return list;
